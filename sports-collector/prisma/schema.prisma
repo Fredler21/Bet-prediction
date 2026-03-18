@@ -1,0 +1,192 @@
+// This is your Prisma schema file.
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Sports & Leagues ──────────────────────────────────────────────────────
+
+model Sport {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique  // e.g. "Football", "Basketball"
+  slug      String   @unique  // e.g. "football", "basketball"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  leagues   League[]
+}
+
+model League {
+  id         Int       @id @default(autoincrement())
+  externalId String    @unique  // Provider's league ID (e.g. "39" for Premier League)
+  name       String
+  slug       String
+  country    String?
+  logo       String?
+  sport      Sport     @relation(fields: [sportId], references: [id])
+  sportId    Int
+  seasons    Season[]
+  standings  Standing[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([sportId])
+}
+
+model Season {
+  id         Int       @id @default(autoincrement())
+  // Composite external ID: "{leagueExternalId}-{year}" e.g. "39-2024"
+  externalId String    @unique
+  year       String    // e.g. "2024" (represents 2024/25 season)
+  startDate  DateTime?
+  endDate    DateTime?
+  isCurrent  Boolean   @default(false)
+  league     League    @relation(fields: [leagueId], references: [id])
+  leagueId   Int
+  matches    Match[]
+  standings  Standing[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([leagueId])
+  @@index([isCurrent])
+}
+
+// ── Teams & Players ───────────────────────────────────────────────────────
+
+model Team {
+  id          Int        @id @default(autoincrement())
+  externalId  String     @unique
+  name        String
+  shortName   String?    // Abbreviation, e.g. "ARS"
+  logo        String?
+  country     String?
+  founded     Int?
+  venue       String?
+  players     Player[]
+  homeMatches Match[]    @relation("HomeTeam")
+  awayMatches Match[]    @relation("AwayTeam")
+  standings   Standing[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Player {
+  id          Int          @id @default(autoincrement())
+  externalId  String       @unique
+  name        String
+  firstName   String?
+  lastName    String?
+  nationality String?
+  birthDate   DateTime?
+  position    String?      // e.g. "Attacker", "Midfielder"
+  number      Int?
+  photo       String?
+  team        Team?        @relation(fields: [teamId], references: [id])
+  teamId      Int?
+  matchEvents MatchEvent[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([teamId])
+}
+
+// ── Matches ───────────────────────────────────────────────────────────────
+
+model Match {
+  id            Int         @id @default(autoincrement())
+  externalId    String      @unique  // Provider's fixture/game ID
+  season        Season      @relation(fields: [seasonId], references: [id])
+  seasonId      Int
+  homeTeam      Team        @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  homeTeamId    Int
+  awayTeam      Team        @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  awayTeamId    Int
+  scheduledAt   DateTime
+  status        MatchStatus @default(SCHEDULED)
+  minute        Int?        // Current match minute (live only)
+  homeScore     Int?
+  awayScore     Int?
+  homeHalfScore Int?
+  awayHalfScore Int?
+  venue         String?
+  referee       String?
+  events        MatchEvent[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([seasonId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  HALFTIME
+  FINISHED
+  POSTPONED
+  CANCELLED
+}
+
+model MatchEvent {
+  id        Int            @id @default(autoincrement())
+  match     Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  matchId   Int
+  type      MatchEventType
+  minute    Int
+  player    Player?        @relation(fields: [playerId], references: [id])
+  playerId  Int?
+  teamId    Int?           // External team ID reference (denormalized for speed)
+  detail    String?        // e.g. "Normal Goal", "Yellow Card"
+  comments  String?
+
+  @@index([matchId])
+  @@index([playerId])
+}
+
+enum MatchEventType {
+  GOAL
+  OWN_GOAL
+  PENALTY
+  YELLOW_CARD
+  RED_CARD
+  YELLOW_RED_CARD
+  SUBSTITUTION
+  VAR
+}
+
+// ── Standings ─────────────────────────────────────────────────────────────
+
+model Standing {
+  id           Int      @id @default(autoincrement())
+  league       League   @relation(fields: [leagueId], references: [id])
+  leagueId     Int
+  season       Season   @relation(fields: [seasonId], references: [id])
+  seasonId     Int
+  team         Team     @relation(fields: [teamId], references: [id])
+  teamId       Int
+  rank         Int      // Position in the table
+  points       Int      @default(0)
+  played       Int      @default(0)
+  won          Int      @default(0)
+  drawn        Int      @default(0)
+  lost         Int      @default(0)
+  goalsFor     Int      @default(0)
+  goalsAgainst Int      @default(0)
+  goalDiff     Int      @default(0)
+  form         String?  // Last 5: e.g. "WWDLW"
+  description  String?  // e.g. "Champions League", "Relegation"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([leagueId, seasonId, teamId])
+  @@index([leagueId, seasonId])
+}
