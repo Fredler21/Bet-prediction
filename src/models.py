@@ -187,6 +187,10 @@ class MatchEvent:
     home_injuries: list[PlayerInfo] = field(default_factory=list)
     away_injuries: list[PlayerInfo] = field(default_factory=list)
 
+    # Scores (populated for finished/live games)
+    home_score: Optional[int] = None
+    away_score: Optional[int] = None
+
     # Odds from SofaScore / ESPN
     home_odds: float = 0.0
     draw_odds: float = 0.0

@@ -264,6 +264,13 @@ class SofaScoreClient:
         }
         status = status_map.get(status_name, MatchStatus.NOT_STARTED)
 
+        # Parse scores for finished/live games
+        try:
+            home_score_val = int(home.get("score", 0) or 0) if status in (MatchStatus.FINISHED, MatchStatus.LIVE) else None
+            away_score_val = int(away.get("score", 0) or 0) if status in (MatchStatus.FINISHED, MatchStatus.LIVE) else None
+        except (ValueError, TypeError):
+            home_score_val, away_score_val = None, None
+
         # Parse date — keep as UTC-aware datetime
         date_str = data.get("date", "")
         try:
@@ -316,6 +323,8 @@ class SofaScoreClient:
             ),
             start_time=start_time,
             status=status,
+            home_score=home_score_val,
+            away_score=away_score_val,
             espn_data=espn_data,
         )
         return event
@@ -849,11 +858,27 @@ _DEMO_LEAGUES = {
 }
 
 
+# Sport season months — avoid generating out-of-season demo games
+_SPORT_SEASONS: dict[Sport, list[int]] = {
+    Sport.SOCCER:            list(range(1, 13)),           # Year-round (multiple leagues)
+    Sport.BASKETBALL:        [1, 2, 3, 4, 5, 6, 10, 11, 12],  # NBA Oct–Jun
+    Sport.BASEBALL:          list(range(3, 11)),            # MLB Mar–Oct
+    Sport.AMERICAN_FOOTBALL: [1, 2, 9, 10, 11, 12],        # NFL Sep–Feb
+    Sport.HOCKEY:            [1, 2, 3, 4, 5, 6, 10, 11, 12],  # NHL Oct–Jun
+    Sport.TENNIS:            list(range(1, 13)),            # ATP/WTA year-round
+    Sport.VOLLEYBALL:        list(range(1, 13)),            # CEV year-round
+}
+
+
 class DemoDataProvider:
     """Generates realistic demo data when SofaScore API is blocked."""
 
     def generate_events(self, sport: Sport, target_date: date) -> list[MatchEvent]:
         """Generate realistic scheduled events for a sport."""
+        # Don't generate games when the sport is out of season
+        if target_date.month not in _SPORT_SEASONS.get(sport, list(range(1, 13))):
+            return []
+
         leagues = _DEMO_LEAGUES.get(sport, [])
         events = []
         event_id = 12000000 + hash(f"{sport.value}{target_date}") % 100000

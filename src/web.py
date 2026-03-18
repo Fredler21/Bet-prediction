@@ -118,6 +118,9 @@ class MatchGroupResponse(BaseModel):
     sport_emoji: str
     start_time: str
     start_date: str
+    status: str = "not_started"
+    home_score: Optional[int] = None
+    away_score: Optional[int] = None
     predictions: list[PredictionResponse]
 
 
@@ -278,6 +281,43 @@ async def get_matches_grouped(
             sport_emoji=SPORT_EMOJIS.get(sport_obj, "🏆"),
             start_time=_to_utc_iso(ev.start_time),
             start_date=_to_utc_iso(ev.start_time),
+            status=ev.status.value,
+            home_score=ev.home_score,
+            away_score=ev.away_score,
+            predictions=[_pred_to_response(p) for p in match["predictions"]],
+        ))
+    return results
+
+
+@app.get("/api/past-games", response_model=list[MatchGroupResponse])
+async def get_past_games(
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD (defaults to yesterday)"),
+    sport: Optional[str] = Query(None),
+    min_confidence: float = Query(50, ge=0, le=100),
+):
+    """Get games for a past date with predictions and final scores."""
+    from datetime import timedelta
+    d = _parse_date(target_date) or (date.today() - timedelta(days=1))
+    sports = _parse_sports([sport] if sport else None)
+    preds = await agent.get_todays_predictions(sports=sports, target_date=d, min_confidence=min_confidence)
+    grouped = agent.group_predictions_by_match(preds)
+    results = []
+    for match in grouped:
+        ev = match["event"]
+        sport_obj = match["sport"]
+        results.append(MatchGroupResponse(
+            match_id=ev.id,
+            home_team=ev.home_team.name,
+            away_team=ev.away_team.name,
+            tournament=ev.tournament.name,
+            country=ev.tournament.country,
+            sport=sport_obj.value,
+            sport_emoji=SPORT_EMOJIS.get(sport_obj, "🏆"),
+            start_time=_to_utc_iso(ev.start_time),
+            start_date=_to_utc_iso(ev.start_time),
+            status=ev.status.value,
+            home_score=ev.home_score,
+            away_score=ev.away_score,
             predictions=[_pred_to_response(p) for p in match["predictions"]],
         ))
     return results
@@ -718,6 +758,7 @@ footer {
     <div class="tab" data-tab="teaser" onclick="loadTeaser()">🎲 Teaser</div>
     <div class="tab" data-tab="flex" onclick="loadFlexParlay()">💪 Flex Parlay</div>
     <div class="tab" data-tab="value" onclick="loadValueBets()">💰 Value Bets</div>
+    <div class="tab" data-tab="past" onclick="loadPastGames()">📅 Past Games</div>
   </div>
 
   <div id="content">
@@ -804,6 +845,7 @@ function reloadActiveTab() {
   else if (activeTab === 'teaser') loadTeaser();
   else if (activeTab === 'flex') loadFlexParlay();
   else if (activeTab === 'value') loadValueBets();
+  else if (activeTab === 'past') loadPastGames();
 }
 
 function switchTab(tab) {
@@ -1229,6 +1271,93 @@ async function loadFlexParlay() {
     document.getElementById('content').innerHTML = html;
   } catch (e) {
     document.getElementById('content').innerHTML = `<div class="empty"><p>❌ Error: ${e.message}</p></div>`;
+  }
+}
+
+// ── Past Games ───────────────────────────────────────────────────────────────
+function getYesterday() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
+}
+
+async function loadPastGames(dateStr) {
+  activeTab = 'past';
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('[data-tab="past"]').classList.add('active');
+  const targetDate = dateStr || getYesterday();
+  showLoading();
+  try {
+    let matchData = [];
+    if (selectedSports.length > 0) {
+      const promises = selectedSports.map(s =>
+        fetch(`${API}/api/past-games?target_date=${targetDate}&sport=${s}&min_confidence=50`).then(r => r.json())
+      );
+      const resolved = await Promise.all(promises);
+      resolved.forEach(r => { if (Array.isArray(r)) matchData.push(...r); });
+    } else {
+      const res = await fetch(`${API}/api/past-games?target_date=${targetDate}&min_confidence=50`);
+      const d = await res.json();
+      if (Array.isArray(d)) matchData = d;
+    }
+    const fmtDateLabel = new Date(targetDate + 'T12:00:00Z').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+    let html = `<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap">
+      <div style="color:var(--dim);font-size:0.9em">📅 <strong style="color:var(--text)">${fmtDateLabel}</strong></div>
+      <input type="date" id="pastDatePicker" value="${targetDate}"
+        style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:13px;"
+        onchange="loadPastGames(this.value)">
+      <div style="color:var(--dim);font-size:0.8em">${matchData.length} match${matchData.length !== 1 ? 'es' : ''} found</div>
+    </div>`;
+    if (!matchData.length) {
+      html += '<div class="empty"><p style="font-size:2em">📅</p><p>No games found for this date. Try a different date or sport filter.</p></div>';
+      document.getElementById('content').innerHTML = html;
+      return;
+    }
+    html += '<div class="match-grid">';
+    for (const match of matchData) {
+      const isFinished = match.status === 'finished';
+      const isLive = match.status === 'live';
+      const scoreHtml = isFinished && match.home_score != null
+        ? `<div style="font-size:1.4em;font-weight:700;color:var(--text);letter-spacing:2px">${match.home_score} \u2013 ${match.away_score}</div>`
+        : `<div style="color:var(--dim);font-size:0.8em">${fmtTime(match.start_time)}</div>`;
+      const statusColor = isFinished ? 'var(--dim)' : isLive ? '#ef4444' : 'var(--accent)';
+      const statusLabel = isFinished ? '\u2705 Final' : isLive ? '\ud83d\udd34 LIVE' : '\u23f0 Scheduled';
+      const topPicks = match.predictions.slice(0, 3);
+      html += `<div class="match-card">
+        <div class="match-header">
+          <div>
+            <div class="match-teams">
+              ${match.sport_emoji} <strong>${match.home_team}</strong>
+              <span class="vs">vs</span>
+              <strong>${match.away_team}</strong>
+            </div>
+            <div class="match-meta">
+              <span>\ud83c\udfd9\ufe0f ${match.tournament}</span>
+              <span style="color:${statusColor}">${statusLabel}</span>
+            </div>
+          </div>
+          <div style="text-align:right">
+            ${scoreHtml}
+            <div class="date" style="margin-top:4px">\ud83d\udcc5 ${fmtDate(match.start_date)}</div>
+          </div>
+        </div>
+        <div class="match-markets">
+          <div class="market-group">
+            <div class="market-label"><div class="dot"></div>\ud83c\udfc6 Top Predictions</div>
+            <div class="market-picks">`;
+      for (const p of topPicks) {
+        html += `<div class="pick-chip">
+          <span>${p.pick}</span>
+          <span class="odds-tag">${p.american_odds || p.odds.toFixed(2)}</span>
+          <span class="conf-tag ${confClass(p.confidence)}">${p.confidence.toFixed(0)}%</span>
+        </div>`;
+      }
+      html += `</div></div></div></div>`;
+    }
+    html += '</div>';
+    document.getElementById('content').innerHTML = html;
+  } catch (e) {
+    document.getElementById('content').innerHTML = `<div class="empty"><p>\u274c Error: ${e.message}</p></div>`;
   }
 }
 </script>
