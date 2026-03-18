@@ -382,10 +382,12 @@ async def build_sgp(req: SGPRequest):
 async def build_all_sgps(
     num_legs: int = Query(4, ge=2, le=10),
     sport: Optional[str] = Query(None),
+    target_date: Optional[str] = Query(None),
 ):
     """Build Same Game Parlays for ALL available games."""
     sports = _parse_sports([sport] if sport else None)
-    sgps = await agent.build_all_sgps(num_legs, sports)
+    d = _parse_date(target_date)
+    sgps = await agent.build_all_sgps(num_legs, sports, d)
     return [_parlay_to_response(s) for s in sgps[:20]]
 
 
@@ -425,8 +427,10 @@ async def build_flex_parlay(req: FlexParlayRequest):
 @app.get("/api/value-bets", response_model=list[PredictionResponse])
 async def get_value_bets(
     min_value: float = Query(0.05, description="Minimum expected value"),
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
 ):
-    bets = await agent.find_value_bets(min_value=min_value)
+    d = _parse_date(target_date)
+    bets = await agent.find_value_bets(min_value=min_value, target_date=d)
     return [_pred_to_response(p) for p in bets]
 
 
@@ -570,7 +574,7 @@ header .date-badge {
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* ── Match Cards ── */
-.match-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(480px, 1fr)); gap: 16px; }
+.match-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(480px, 100%), 1fr)); gap: 16px; }
 
 .match-card {
   background: var(--card); border: 1px solid var(--border);
@@ -677,7 +681,7 @@ header .date-badge {
 .summary-item .label { font-size: 0.7em; color: var(--dim); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
 
 /* ── Value Bets ── */
-.value-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
+.value-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); gap: 14px; }
 .value-card {
   background: var(--card); border-left: 3px solid var(--gold);
   border-radius: 10px; padding: 16px;
@@ -706,6 +710,66 @@ header .date-badge {
 footer {
   text-align: center; padding: 20px; color: var(--dim);
   font-size: 0.8em; border-top: 1px solid var(--border); margin-top: 30px;
+}
+
+/* ── Mobile Responsive ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .container { padding: 8px 10px; }
+  header { padding: 14px 0 12px; }
+  header h1 { font-size: 1.25em; letter-spacing: -0.3px; }
+  header .sub { font-size: 0.75em; }
+  header .date-badge { font-size: 0.72em; padding: 3px 10px; }
+
+  /* Tabs: horizontal scroll */
+  .tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 1px;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { padding: 8px 12px; font-size: 12px; white-space: nowrap; }
+
+  /* Sport chips */
+  .sport-chip { font-size: 11px; padding: 5px 10px; }
+
+  /* Controls: stack vertically */
+  .controls { flex-direction: column; gap: 8px; }
+  .controls input, .controls select { width: 100%; box-sizing: border-box; }
+  .btn { width: 100%; padding: 12px; font-size: 14px; }
+
+  /* Grids: single column */
+  .match-grid { grid-template-columns: 1fr !important; gap: 10px; }
+  .value-grid { grid-template-columns: 1fr !important; gap: 10px; }
+
+  /* Match card header: stack */
+  .match-header { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .match-time-badge { text-align: left; display: flex; align-items: center; gap: 10px; }
+  .match-time-badge .time { font-size: 1em; }
+  .match-time-badge .date { font-size: 0.75em; }
+  .match-teams { font-size: 0.95em; }
+
+  /* Pick chips: wrap tightly */
+  .pick-chip { font-size: 0.75em; padding: 5px 9px; }
+
+  /* Parlay legs: stack */
+  .parlay-section { padding: 14px; }
+  .parlay-title { font-size: 1.1em; flex-wrap: wrap; gap: 6px; }
+  .parlay-leg { flex-wrap: wrap; gap: 6px; }
+  .leg-pick { text-align: left; margin-left: 40px; font-size: 0.9em; }
+  .parlay-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .summary-item .value { font-size: 1.1em; }
+  .summary-item { padding: 8px; }
+
+  /* Value cards */
+  .value-card { padding: 12px; }
+}
+
+@media (max-width: 400px) {
+  header h1 { font-size: 1.05em; }
+  .tab { padding: 7px 10px; font-size: 11px; }
+  .parlay-summary { grid-template-columns: repeat(2, 1fr); }
 }
 </style>
 </head>
@@ -781,6 +845,15 @@ const API = '';
 let selectedSports = [];
 let activeFilter = 'balanced';
 let activeTab = 'matches';
+
+// Returns today's date in the user's LOCAL timezone as YYYY-MM-DD
+function localDateStr() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 // ── Time formatting: convert UTC ISO strings to user's local timezone ──
 function fmtTime(utcStr) {
@@ -907,18 +980,19 @@ async function loadMatches() {
   document.querySelector('[data-tab="matches"]').classList.add('active');
   showLoading();
   const minConf = document.getElementById('minConf').value;
+  const tdate = localDateStr();
 
   try {
     // If multiple sports selected, fetch each; else fetch all
     let matchData = [];
     if (selectedSports.length > 0) {
       const promises = selectedSports.map(s =>
-        fetch(`${API}/api/matches?min_confidence=${minConf}&sport=${s}`).then(r => r.json())
+        fetch(`${API}/api/matches?min_confidence=${minConf}&sport=${s}&target_date=${tdate}`).then(r => r.json())
       );
       const results = await Promise.all(promises);
       results.forEach(r => { if (Array.isArray(r)) matchData.push(...r); });
     } else {
-      const res = await fetch(`${API}/api/matches?min_confidence=${minConf}`);
+      const res = await fetch(`${API}/api/matches?min_confidence=${minConf}&target_date=${tdate}`);
       const d = await res.json();
       if (Array.isArray(d)) matchData = d;
     }
@@ -1017,7 +1091,7 @@ async function loadParlay() {
   const legs = document.getElementById('parlayLegs').value;
   const strategy = document.getElementById('parlayStrategy').value;
 
-  const body = { num_legs: parseInt(legs), strategy: strategy };
+  const body = { num_legs: parseInt(legs), strategy: strategy, target_date: localDateStr() };
   if (selectedSports.length > 0) body.sports = selectedSports;
 
   try {
@@ -1085,7 +1159,7 @@ async function loadValueBets() {
   document.querySelector('[data-tab="value"]').classList.add('active');
   showLoading();
   try {
-    const res = await fetch(`${API}/api/value-bets`);
+    const res = await fetch(`${API}/api/value-bets?target_date=${localDateStr()}`);
     const data = await res.json();
     if (!data.length) {
       document.getElementById('content').innerHTML = '<div class="empty"><p style="font-size:2em">💰</p><p>No value bets found currently. Check back later!</p></div>';
@@ -1178,7 +1252,7 @@ async function loadSGPs() {
   document.querySelector('[data-tab="sgp"]').classList.add('active');
   showLoading();
   try {
-    let url = `${API}/api/sgps?num_legs=4`;
+    let url = `${API}/api/sgps?num_legs=4&target_date=${localDateStr()}`;
     if (selectedSports.length > 0) url += `&sport=${selectedSports[0]}`;
     const res = await fetch(url);
     const data = await res.json();
@@ -1204,7 +1278,7 @@ async function loadRoundRobin() {
   document.querySelector('[data-tab="roundrobin"]').classList.add('active');
   showLoading();
   try {
-    const body = { num_picks: 5, combo_size: 3 };
+    const body = { num_picks: 5, combo_size: 3, target_date: localDateStr() };
     if (selectedSports.length > 0) body.sports = selectedSports;
     const res = await fetch(`${API}/api/round-robin`, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
@@ -1231,7 +1305,7 @@ async function loadTeaser() {
   document.querySelector('[data-tab="teaser"]').classList.add('active');
   showLoading();
   try {
-    const body = { num_legs: 3, teaser_points: 6.0 };
+    const body = { num_legs: 3, teaser_points: 6.0, target_date: localDateStr() };
     if (selectedSports.length > 0) body.sports = selectedSports;
     const res = await fetch(`${API}/api/teaser`, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
@@ -1256,7 +1330,7 @@ async function loadFlexParlay() {
   document.querySelector('[data-tab="flex"]').classList.add('active');
   showLoading();
   try {
-    const body = { num_legs: 5, miss_allowed: 1 };
+    const body = { num_legs: 5, miss_allowed: 1, target_date: localDateStr() };
     if (selectedSports.length > 0) body.sports = selectedSports;
     const res = await fetch(`${API}/api/flex-parlay`, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
