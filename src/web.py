@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="🏆 Bet Prediction AI Agent",
-    description="Premium sports betting predictions powered by SofaScore data + AI",
+    description="Premium sports betting predictions powered by API-Football + ESPN data + AI",
     version="2.0.0",
     lifespan=lifespan,
 )

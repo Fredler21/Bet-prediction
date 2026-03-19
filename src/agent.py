@@ -19,7 +19,7 @@ from src.config import settings
 from src.models import (
     Sport, BetType, MatchEvent, Prediction, ParlayPrediction, SPORT_EMOJIS,
 )
-from src.sofascore_client import SofaScoreClient
+from src.api_football_client import APIFootballClient
 from src.analyzer import StatisticalAnalyzer
 from src.parlay_optimizer import ParlayOptimizer
 
@@ -35,7 +35,7 @@ class PredictionAgent:
     """Premium AI Prediction Agent."""
 
     def __init__(self, bankroll: float = 0):
-        self.client = SofaScoreClient()
+        self.client = APIFootballClient()
         self.analyzer = StatisticalAnalyzer()
         self.optimizer = ParlayOptimizer(bankroll=bankroll or settings.default_bankroll)
         self._openai = None

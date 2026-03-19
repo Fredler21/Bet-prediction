@@ -15,11 +15,17 @@ class Settings(BaseModel):
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-    # SofaScore
+    # API-Football
+    api_football_key: str = os.getenv("API_FOOTBALL_KEY", "")
+    api_football_base_url: str = os.getenv(
+        "API_FOOTBALL_BASE_URL", "https://v3.football.api-sports.io"
+    )
+    sofascore_cache_ttl: int = int(os.getenv("SOFASCORE_CACHE_TTL", "300"))  # reused as generic cache TTL
+
+    # SofaScore (kept for backward compat; no longer used as primary source)
     sofascore_base_url: str = os.getenv(
         "SOFASCORE_BASE_URL", "https://api.sofascore.com/api/v1"
     )
-    sofascore_cache_ttl: int = int(os.getenv("SOFASCORE_CACHE_TTL", "300"))
 
     # Database
     database_url: str = os.getenv(
