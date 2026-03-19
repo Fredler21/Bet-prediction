@@ -1,6 +1,6 @@
 import { Controller, Post, HttpCode, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { JobSchedulerService } from '../jobs/job-scheduler.service';
+import { JobSchedulerService } from '../../jobs/job-scheduler.service';
 
 /**
  * Admin endpoints for manually triggering data ingestion.
