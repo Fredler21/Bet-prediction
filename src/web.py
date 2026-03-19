@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="🏆 Bet Prediction AI Agent",
+    title="🏆 Bet Prediction Abibi",
     description="Premium sports betting predictions powered by API-Football + ESPN data + AI",
     version="2.0.0",
     lifespan=lifespan,
@@ -465,7 +465,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🏆 Premium Bet Prediction AI</title>
+<title>🏆 Bet Prediction Abibi</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -808,7 +808,7 @@ footer {
 <body>
 <div class="container">
   <header>
-    <h1>🏆 Premium Bet Prediction <span class="glow">AI Agent</span></h1>
+    <h1>🏆 Bet Prediction <span class="glow">Abibi</span></h1>
     <div class="sub">Powered by SofaScore Data • Statistical Analysis • AI Reasoning</div>
     <div class="date-badge" id="todayDate"></div>
   </header>
