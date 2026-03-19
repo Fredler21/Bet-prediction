@@ -518,6 +518,33 @@ header .date-badge {
   margin-top: 8px;
 }
 
+/* ── Date Navigator ── */
+.date-nav {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 8px 14px;
+  margin-bottom: 14px; flex-wrap: wrap;
+}
+.date-nav-label {
+  font-weight: 700; font-size: 0.95em; color: var(--text); flex: 1;
+  text-align: center; min-width: 140px;
+}
+.date-nav-btn {
+  padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: transparent; color: var(--text); cursor: pointer;
+  font-size: 13px; font-weight: 600; transition: all 0.15s;
+  font-family: inherit;
+}
+.date-nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+.date-nav-btn.today-btn {
+  background: var(--accent-glow); color: var(--accent); border-color: var(--accent);
+}
+.date-nav input[type="date"] {
+  padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); font-family: inherit; font-size: 13px;
+}
+.date-nav input[type="date"]:focus { border-color: var(--accent); outline: none; }
+
 /* ── Controls ── */
 .controls {
   display: flex; gap: 10px; flex-wrap: wrap;
@@ -720,6 +747,12 @@ footer {
   header .sub { font-size: 0.75em; }
   header .date-badge { font-size: 0.72em; padding: 3px 10px; }
 
+  /* Date navigator: wrap and center on mobile */
+  .date-nav { justify-content: center; gap: 6px; }
+  .date-nav-label { width: 100%; order: -1; text-align: center; font-size: 0.9em; }
+  .date-nav-btn { padding: 4px 10px; font-size: 12px; }
+  .date-nav input[type="date"] { font-size: 12px; padding: 4px 8px; }
+
   /* Tabs: horizontal scroll */
   .tabs {
     overflow-x: auto;
@@ -814,6 +847,17 @@ footer {
     <button class="btn btn-gold" onclick="loadValueBets()">💰 Value Bets</button>
   </div>
 
+  <!-- Date Navigator -->
+  <div class="date-nav">
+    <button class="date-nav-btn" onclick="shiftDate(-1)">&#8592; Prev</button>
+    <button class="date-nav-btn" onclick="shiftDate(-2)">&#8676; -2d</button>
+    <div class="date-nav-label" id="dateNavLabel">Today</div>
+    <input type="date" id="dateNavPicker" onchange="setNavDate(this.value)">
+    <button class="date-nav-btn today-btn" onclick="setNavDate(localDateStr())">Today</button>
+    <button class="date-nav-btn" onclick="shiftDate(1)">Tomorrow &#8594;</button>
+    <button class="date-nav-btn" onclick="shiftDate(2)">+2d &#8677;</button>
+  </div>
+
   <div class="tabs">
     <div class="tab active" data-tab="matches" onclick="loadMatches()">🏟️ Matches & Markets</div>
     <div class="tab" data-tab="parlay" onclick="loadParlay()">🎯 Parlay Builder</div>
@@ -836,7 +880,7 @@ footer {
 
   <footer>
     <p>⚠️ Bet responsibly. Predictions are for entertainment and informational purposes only.</p>
-    <p>Data sourced from ESPN & SofaScore. Past performance does not guarantee future results.</p>
+    <p>Data sourced from API-Football & ESPN. Past performance does not guarantee future results.</p>
   </footer>
 </div>
 
@@ -845,6 +889,7 @@ const API = '';
 let selectedSports = [];
 let activeFilter = 'balanced';
 let activeTab = 'matches';
+let activeDateStr = '';  // YYYY-MM-DD, set on boot
 
 // Returns today's date in the user's LOCAL timezone as YYYY-MM-DD
 function localDateStr() {
@@ -853,6 +898,38 @@ function localDateStr() {
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const d = String(now.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+// Format a YYYY-MM-DD into a human-readable label
+function dateLabelOf(ymd) {
+  const today = localDateStr();
+  const d = new Date(ymd + 'T12:00:00');
+  const base = d.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+  if (ymd === today) return `📅 Today — ${base}`;
+  const tomorrow = offsetDate(today, 1);
+  const yesterday = offsetDate(today, -1);
+  if (ymd === tomorrow) return `🔮 Tomorrow — ${base}`;
+  if (ymd === yesterday) return `📜 Yesterday — ${base}`;
+  const delta = Math.round((new Date(ymd) - new Date(today)) / 86400000);
+  const tag = delta > 0 ? `+${delta}d` : `${delta}d`;
+  return `📅 ${base} (${tag})`;
+}
+
+function offsetDate(ymd, days) {
+  const d = new Date(ymd + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
+function setNavDate(ymd, reload = true) {
+  activeDateStr = ymd;
+  document.getElementById('dateNavLabel').textContent = dateLabelOf(ymd);
+  document.getElementById('dateNavPicker').value = ymd;
+  if (reload) reloadActiveTab();
+}
+
+function shiftDate(delta) {
+  setNavDate(offsetDate(activeDateStr, delta));
 }
 
 // ── Time formatting: convert UTC ISO strings to user's local timezone ──
@@ -869,7 +946,10 @@ function fmtDate(utcStr) {
   return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
 }
 
-// Set today's date
+// Boot: init date navigator to today
+setNavDate(localDateStr(), false);
+
+// Set today's date in header
 document.getElementById('todayDate').textContent =
   '📅 ' + new Date().toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'})
   + ' • ' + new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
@@ -980,7 +1060,7 @@ async function loadMatches() {
   document.querySelector('[data-tab="matches"]').classList.add('active');
   showLoading();
   const minConf = document.getElementById('minConf').value;
-  const tdate = localDateStr();
+  const tdate = activeDateStr;
 
   try {
     // If multiple sports selected, fetch each; else fetch all
@@ -1159,7 +1239,7 @@ async function loadValueBets() {
   document.querySelector('[data-tab="value"]').classList.add('active');
   showLoading();
   try {
-    const res = await fetch(`${API}/api/value-bets?target_date=${localDateStr()}`);
+    const res = await fetch(`${API}/api/value-bets?target_date=${activeDateStr}`);
     const data = await res.json();
     if (!data.length) {
       document.getElementById('content').innerHTML = '<div class="empty"><p style="font-size:2em">💰</p><p>No value bets found currently. Check back later!</p></div>';
@@ -1252,7 +1332,7 @@ async function loadSGPs() {
   document.querySelector('[data-tab="sgp"]').classList.add('active');
   showLoading();
   try {
-    let url = `${API}/api/sgps?num_legs=4&target_date=${localDateStr()}`;
+    let url = `${API}/api/sgps?num_legs=4&target_date=${activeDateStr}`;
     if (selectedSports.length > 0) url += `&sport=${selectedSports[0]}`;
     const res = await fetch(url);
     const data = await res.json();
@@ -1278,7 +1358,7 @@ async function loadRoundRobin() {
   document.querySelector('[data-tab="roundrobin"]').classList.add('active');
   showLoading();
   try {
-    const body = { num_picks: 5, combo_size: 3, target_date: localDateStr() };
+    const body = { num_picks: 5, combo_size: 3, target_date: activeDateStr };
     if (selectedSports.length > 0) body.sports = selectedSports;
     const res = await fetch(`${API}/api/round-robin`, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
@@ -1305,7 +1385,7 @@ async function loadTeaser() {
   document.querySelector('[data-tab="teaser"]').classList.add('active');
   showLoading();
   try {
-    const body = { num_legs: 3, teaser_points: 6.0, target_date: localDateStr() };
+    const body = { num_legs: 3, teaser_points: 6.0, target_date: activeDateStr };
     if (selectedSports.length > 0) body.sports = selectedSports;
     const res = await fetch(`${API}/api/teaser`, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
@@ -1330,7 +1410,7 @@ async function loadFlexParlay() {
   document.querySelector('[data-tab="flex"]').classList.add('active');
   showLoading();
   try {
-    const body = { num_legs: 5, miss_allowed: 1, target_date: localDateStr() };
+    const body = { num_legs: 5, miss_allowed: 1, target_date: activeDateStr };
     if (selectedSports.length > 0) body.sports = selectedSports;
     const res = await fetch(`${API}/api/flex-parlay`, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
@@ -1349,17 +1429,11 @@ async function loadFlexParlay() {
 }
 
 // ── Past Games ───────────────────────────────────────────────────────────────
-function getYesterday() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split('T')[0];
-}
-
-async function loadPastGames(dateStr) {
+async function loadPastGames() {
   activeTab = 'past';
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelector('[data-tab="past"]').classList.add('active');
-  const targetDate = dateStr || getYesterday();
+  const targetDate = activeDateStr;
   showLoading();
   try {
     let matchData = [];
@@ -1377,10 +1451,7 @@ async function loadPastGames(dateStr) {
     const fmtDateLabel = new Date(targetDate + 'T12:00:00Z').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
     let html = `<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap">
       <div style="color:var(--dim);font-size:0.9em">📅 <strong style="color:var(--text)">${fmtDateLabel}</strong></div>
-      <input type="date" id="pastDatePicker" value="${targetDate}"
-        style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:13px;"
-        onchange="loadPastGames(this.value)">
-      <div style="color:var(--dim);font-size:0.8em">${matchData.length} match${matchData.length !== 1 ? 'es' : ''} found</div>
+      <div style="color:var(--dim);font-size:0.8em">${matchData.length} match${matchData.length !== 1 ? 'es' : ''} found — use the date navigator above to change date</div>
     </div>`;
     if (!matchData.length) {
       html += '<div class="empty"><p style="font-size:2em">📅</p><p>No games found for this date. Try a different date or sport filter.</p></div>';
