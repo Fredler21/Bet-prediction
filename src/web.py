@@ -865,7 +865,6 @@ footer {
     <div class="tab" data-tab="teaser" onclick="loadTeaser()">🎲 Teaser</div>
     <div class="tab" data-tab="flex" onclick="loadFlexParlay()">💪 Flex Parlay</div>
     <div class="tab" data-tab="value" onclick="loadValueBets()">💰 Value Bets</div>
-    <div class="tab" data-tab="past" onclick="loadPastGames()">📅 Past Games</div>
   </div>
 
   <div id="content">
@@ -924,14 +923,7 @@ function setNavDate(ymd, reload = true) {
   activeDateStr = ymd;
   document.getElementById('dateNavLabel').textContent = dateLabelOf(ymd);
   document.getElementById('dateNavPicker').value = ymd;
-  if (reload) {
-    // Past dates → show results; today/future → stay on current tab
-    if (ymd < localDateStr()) {
-      loadPastGames();
-    } else {
-      reloadActiveTab();
-    }
-  }
+  if (reload) reloadActiveTab();
 }
 
 function shiftDate(delta) {
@@ -1004,7 +996,7 @@ function reloadActiveTab() {
   else if (activeTab === 'teaser') loadTeaser();
   else if (activeTab === 'flex') loadFlexParlay();
   else if (activeTab === 'value') loadValueBets();
-  else if (activeTab === 'past') loadPastGames();
+  else loadMatches();
 }
 
 function switchTab(tab) {
@@ -1067,53 +1059,91 @@ async function loadMatches() {
   showLoading();
   const minConf = document.getElementById('minConf').value;
   const tdate = activeDateStr;
+  const isPast = tdate < localDateStr();
 
   try {
-    // If multiple sports selected, fetch each; else fetch all
     let matchData = [];
-    if (selectedSports.length > 0) {
-      const promises = selectedSports.map(s =>
-        fetch(`${API}/api/matches?min_confidence=${minConf}&sport=${s}&target_date=${tdate}`).then(r => r.json())
-      );
-      const results = await Promise.all(promises);
-      results.forEach(r => { if (Array.isArray(r)) matchData.push(...r); });
-    } else {
-      const res = await fetch(`${API}/api/matches?min_confidence=${minConf}&target_date=${tdate}`);
-      const d = await res.json();
-      if (Array.isArray(d)) matchData = d;
-    }
 
-    // Apply filter mode
-    if (activeFilter === 'safe') {
-      matchData = matchData.map(m => ({
-        ...m,
-        predictions: m.predictions.filter(p => p.confidence >= 75)
-      })).filter(m => m.predictions.length > 0);
-    } else if (activeFilter === 'value') {
-      matchData = matchData.map(m => ({
-        ...m,
-        predictions: m.predictions.filter(p => p.value_rating > 0)
-      })).filter(m => m.predictions.length > 0);
+    if (isPast) {
+      // Past date: fetch raw results (all statuses, with scores)
+      const fetchOne = s =>
+        fetch(`${API}/api/past-games?target_date=${tdate}&sport=${s}&min_confidence=0`).then(r => r.json());
+      if (selectedSports.length > 0) {
+        const results = await Promise.all(selectedSports.map(fetchOne));
+        results.forEach(r => { if (Array.isArray(r)) matchData.push(...r); });
+      } else {
+        const res = await fetch(`${API}/api/past-games?target_date=${tdate}&min_confidence=0`);
+        const d = await res.json();
+        if (Array.isArray(d)) matchData = d;
+      }
+    } else {
+      // Today / future: predictions with confidence filter
+      if (selectedSports.length > 0) {
+        const promises = selectedSports.map(s =>
+          fetch(`${API}/api/matches?min_confidence=${minConf}&sport=${s}&target_date=${tdate}`).then(r => r.json())
+        );
+        const results = await Promise.all(promises);
+        results.forEach(r => { if (Array.isArray(r)) matchData.push(...r); });
+      } else {
+        const res = await fetch(`${API}/api/matches?min_confidence=${minConf}&target_date=${tdate}`);
+        const d = await res.json();
+        if (Array.isArray(d)) matchData = d;
+      }
+
+      // Apply filter mode
+      if (activeFilter === 'safe') {
+        matchData = matchData.map(m => ({
+          ...m,
+          predictions: m.predictions.filter(p => p.confidence >= 75)
+        })).filter(m => m.predictions.length > 0);
+      } else if (activeFilter === 'value') {
+        matchData = matchData.map(m => ({
+          ...m,
+          predictions: m.predictions.filter(p => p.value_rating > 0)
+        })).filter(m => m.predictions.length > 0);
+      }
     }
 
     if (!matchData.length) {
-      document.getElementById('content').innerHTML = '<div class="empty"><p style="font-size:2em">🔍</p><p>No matches found for this filter. Try switching to <b>Balanced</b> or selecting different sports.</p></div>';
+      document.getElementById('content').innerHTML = '<div class="empty"><p style="font-size:2em">🔍</p><p>No matches found for this date. Try a different date or sport filter.</p></div>';
       return;
     }
 
-    let html = '<div style="margin-bottom:12px;color:var(--dim);font-size:0.85em">'
-             + `📊 ${matchData.length} matches • ${matchData.reduce((s,m) => s + m.predictions.length, 0)} predictions`
+    let html = '<div style="margin-bottom:12px;color:var(--dim);font-size:0.85em">';
+    if (isPast) {
+      html += `📅 ${matchData.length} matches on ${new Date(tdate + 'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
+    } else {
+      html += `📊 ${matchData.length} matches • ${matchData.reduce((s,m) => s + m.predictions.length, 0)} predictions`
              + (activeFilter === 'safe' ? ' • 🛡️ Showing only <b style="color:var(--green)">75%+ confidence</b> picks' : '')
-             + (activeFilter === 'value' ? ' • 💎 Showing only <b style="color:var(--gold)">+EV value</b> picks' : '')
-             + '</div>';
+             + (activeFilter === 'value' ? ' • 💎 Showing only <b style="color:var(--gold)">+EV value</b> picks' : '');
+    }
+    html += '</div>';
     html += '<div class="match-grid">';
 
     for (const match of matchData) {
-      // Group predictions by bet type
+      const isFinished = match.status === 'finished';
+      const isLive = match.status === 'live';
+      const hasScore = match.home_score != null && match.away_score != null;
+
+      let timeBadge;
+      if (isFinished && hasScore) {
+        timeBadge = `<div style="font-size:1.4em;font-weight:800;color:var(--text);letter-spacing:3px">${match.home_score} – ${match.away_score}</div>
+                     <div style="font-size:0.7em;color:var(--dim);margin-top:2px">✅ Final</div>`;
+      } else if (isLive && hasScore) {
+        timeBadge = `<div style="font-size:1.4em;font-weight:800;color:#ef4444;letter-spacing:3px">${match.home_score} – ${match.away_score}</div>
+                     <div style="font-size:0.7em;color:#ef4444;margin-top:2px">🔴 LIVE</div>`;
+      } else {
+        timeBadge = `<div class="time">${fmtTime(match.start_time)}</div>
+                     <div class="date">📅 ${fmtDate(match.start_date)}</div>`;
+      }
+
+      // Group predictions by bet type (skip for past dates)
       const byType = {};
-      for (const p of match.predictions) {
-        if (!byType[p.bet_type]) byType[p.bet_type] = [];
-        byType[p.bet_type].push(p);
+      if (!isPast) {
+        for (const p of match.predictions) {
+          if (!byType[p.bet_type]) byType[p.bet_type] = [];
+          byType[p.bet_type].push(p);
+        }
       }
 
     html += `<div class="match-card">
@@ -1129,34 +1159,38 @@ async function loadMatches() {
             <span>🌍 ${match.country}</span>
           </div>
         </div>
-        <div class="match-time-badge">
-          <div class="time">${fmtTime(match.start_time)}</div>
-          <div class="date">📅 ${fmtDate(match.start_date)}</div>
-        </div>
+        <div class="match-time-badge">${timeBadge}</div>
       </div>
       <div class="match-markets">`;
 
-    for (const [betType, preds] of Object.entries(byType)) {
-      const label = marketLabels[betType] || betType.replace(/_/g, ' ').toUpperCase();
-      html += `<div class="market-group">
-        <div class="market-label"><div class="dot"></div>${label}</div>
-        <div class="market-picks">`;
+    if (isPast || !match.predictions.length) {
+      // Past date: just show the score card, no prediction chips
+      html += `<div style="color:var(--dim);font-size:0.8em;padding:4px 0">
+        ${isFinished ? '✅ Final score above' : isLive ? '🔴 In progress' : '⏰ Scheduled — ' + fmtTime(match.start_time)}
+      </div>`;
+    } else {
+      for (const [betType, preds] of Object.entries(byType)) {
+        const label = marketLabels[betType] || betType.replace(/_/g, ' ').toUpperCase();
+        html += `<div class="market-group">
+          <div class="market-label"><div class="dot"></div>${label}</div>
+          <div class="market-picks">`;
 
-      for (const p of preds.slice(0, 5)) {
-        const oddsTag = p.odds > 0
-          ? `<span class="odds-tag">${p.american_odds || p.odds.toFixed(2)}</span>`
-          : '';
-        const pushTag = p.push_note
-          ? `<span class="push-tag">⚠️ ${p.push_note}</span>`
-          : '';
-        html += `<div class="pick-chip">
-          <span>${p.pick}</span>
-          ${oddsTag}
-          <span class="conf-tag ${confClass(p.confidence)}">${p.confidence.toFixed(0)}%</span>
-          ${pushTag}
-        </div>`;
+        for (const p of preds.slice(0, 5)) {
+          const oddsTag = p.odds > 0
+            ? `<span class="odds-tag">${p.american_odds || p.odds.toFixed(2)}</span>`
+            : '';
+          const pushTag = p.push_note
+            ? `<span class="push-tag">⚠️ ${p.push_note}</span>`
+            : '';
+          html += `<div class="pick-chip">
+            <span>${p.pick}</span>
+            ${oddsTag}
+            <span class="conf-tag ${confClass(p.confidence)}">${p.confidence.toFixed(0)}%</span>
+            ${pushTag}
+          </div>`;
+        }
+        html += '</div></div>';
       }
-      html += '</div></div>';
     }
 
     html += '</div></div>';
