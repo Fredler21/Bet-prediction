@@ -434,6 +434,39 @@ Provide a brief expert analysis (3-4 sentences) covering:
         result = sorted(matches.values(), key=lambda m: m["event"].start_time)
         return result
 
+    async def get_past_results(
+        self,
+        sports: Optional[list[Sport]] = None,
+        target_date: Optional[date] = None,
+    ) -> list[dict]:
+        """
+        Get all matches for any date (past, present, or future) including
+        finished/live games with their scores. Unlike get_todays_predictions,
+        this does NOT filter by status — it returns everything available.
+        """
+        d = target_date or date.today()
+        if sports is None:
+            sports = [
+                Sport.SOCCER, Sport.BASKETBALL, Sport.TENNIS,
+                Sport.BASEBALL, Sport.AMERICAN_FOOTBALL, Sport.VOLLEYBALL,
+                Sport.HOCKEY,
+            ]
+
+        results: list[dict] = []
+        for sport in sports:
+            try:
+                events = await self.client.get_scheduled_events(sport, d)
+                # No status filter — show everything: finished, live, not started
+                events.sort(key=lambda e: e.tournament.priority, reverse=True)
+                events = events[:40]
+                for event in events:
+                    results.append({"event": event, "sport": sport, "predictions": []})
+            except Exception as e:
+                logger.warning(f"Could not fetch {sport.value} results for {d}: {e}")
+
+        results.sort(key=lambda m: m["event"].start_time)
+        return results
+
     async def generate_daily_report(
         self,
         sports: Optional[list[Sport]] = None,

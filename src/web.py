@@ -295,14 +295,13 @@ async def get_past_games(
     sport: Optional[str] = Query(None),
     min_confidence: float = Query(50, ge=0, le=100),
 ):
-    """Get games for a past date with predictions and final scores."""
+    """Get all matches for any date — finished, live, or scheduled — with scores."""
     from datetime import timedelta
     d = _parse_date(target_date) or (date.today() - timedelta(days=1))
     sports = _parse_sports([sport] if sport else None)
-    preds = await agent.get_todays_predictions(sports=sports, target_date=d, min_confidence=min_confidence)
-    grouped = agent.group_predictions_by_match(preds)
+    matches = await agent.get_past_results(sports=sports, target_date=d)
     results = []
-    for match in grouped:
+    for match in matches:
         ev = match["event"]
         sport_obj = match["sport"]
         results.append(MatchGroupResponse(
@@ -318,7 +317,7 @@ async def get_past_games(
             status=ev.status.value,
             home_score=ev.home_score,
             away_score=ev.away_score,
-            predictions=[_pred_to_response(p) for p in match["predictions"]],
+            predictions=[],
         ))
     return results
 
@@ -925,7 +924,14 @@ function setNavDate(ymd, reload = true) {
   activeDateStr = ymd;
   document.getElementById('dateNavLabel').textContent = dateLabelOf(ymd);
   document.getElementById('dateNavPicker').value = ymd;
-  if (reload) reloadActiveTab();
+  if (reload) {
+    // Past dates → show results; today/future → stay on current tab
+    if (ymd < localDateStr()) {
+      loadPastGames();
+    } else {
+      reloadActiveTab();
+    }
+  }
 }
 
 function shiftDate(delta) {
