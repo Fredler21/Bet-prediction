@@ -465,1086 +465,817 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🏆 Bet Prediction Abibi</title>
+<title>Bet Prediction Abibi</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+/* ── Hard Rock Bet inspired dark theme ── */
 :root {
-  --bg: #080c14;
-  --card: #0f1520;
-  --card-hover: #141d2e;
-  --border: #1a2540;
-  --accent: #00e5a0;
-  --accent-glow: rgba(0,229,160,0.15);
-  --accent2: #7c5cfc;
-  --accent2-glow: rgba(124,92,252,0.15);
+  --bg: #111118;
+  --card: #1a1a24;
+  --card-hover: #1e1e2e;
+  --border: #2a2a3a;
+  --accent: #7c3aed;
+  --accent-light: rgba(124,58,237,0.15);
   --gold: #ffd700;
-  --text: #e8edf5;
-  --dim: #5a6b85;
-  --green: #00e5a0;
-  --yellow: #ffbe0b;
-  --orange: #ff8c42;
-  --red: #ff4d6a;
+  --text: #f0f0f0;
+  --dim: #666680;
+  --green: #22c55e;
+  --yellow: #eab308;
+  --red: #ef4444;
   --blue: #3b82f6;
+  --odds-bg: #252535;
+  --odds-hover: #3a3a5a;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body {
-  font-family: 'Inter', -apple-system, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  background-image: radial-gradient(ellipse at 50% 0%, rgba(0,229,160,0.03) 0%, transparent 60%);
-}
-.container { max-width: 1500px; margin: 0 auto; padding: 16px 20px; }
+body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+.container { max-width:1200px; margin:0 auto; padding:0 0 40px; }
 
-/* ── Header ── */
-header {
-  text-align: center;
-  padding: 25px 0 20px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
+/* ── Top nav ── */
+.top-nav {
+  background:#0d0d15; border-bottom:1px solid var(--border);
+  padding:12px 20px; display:flex; align-items:center; gap:16px;
 }
-header h1 { font-size: 2em; font-weight: 800; letter-spacing: -0.5px; }
-header h1 .glow { color: var(--accent); text-shadow: 0 0 20px var(--accent-glow); }
-header .sub { color: var(--dim); font-size: 0.95em; margin-top: 6px; }
-header .date-badge {
-  display: inline-block;
-  background: var(--accent-glow);
-  color: var(--accent);
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-size: 0.8em;
-  font-weight: 600;
-  margin-top: 8px;
-}
+.top-nav .logo { font-weight:800; font-size:1.1em; color:var(--accent); }
+.top-nav .live-time { margin-left:auto; font-size:0.82em; color:var(--dim); }
 
 /* ── Date Navigator ── */
 .date-nav {
-  display: flex; align-items: center; gap: 10px;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 12px; padding: 8px 14px;
-  margin-bottom: 14px; flex-wrap: wrap;
+  display:flex; align-items:center; gap:8px;
+  background:#0d0d15; border-bottom:1px solid var(--border);
+  padding:8px 20px; flex-wrap:wrap;
 }
-.date-nav-label {
-  font-weight: 700; font-size: 0.95em; color: var(--text); flex: 1;
-  text-align: center; min-width: 140px;
-}
+.date-nav-label { font-weight:700; font-size:0.9em; flex:1; min-width:160px; color:var(--text); }
 .date-nav-btn {
-  padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
-  background: transparent; color: var(--text); cursor: pointer;
-  font-size: 13px; font-weight: 600; transition: all 0.15s;
-  font-family: inherit;
+  padding:5px 12px; border-radius:6px; border:1px solid var(--border);
+  background:transparent; color:var(--text); cursor:pointer;
+  font-size:12px; font-weight:600; font-family:inherit; transition:all 0.15s;
 }
-.date-nav-btn:hover { border-color: var(--accent); color: var(--accent); }
-.date-nav-btn.today-btn {
-  background: var(--accent-glow); color: var(--accent); border-color: var(--accent);
-}
+.date-nav-btn:hover { border-color:var(--accent); color:var(--accent); }
+.date-nav-btn.today { background:var(--accent-light); color:var(--accent); border-color:var(--accent); }
 .date-nav input[type="date"] {
-  padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--card); color: var(--text); font-family: inherit; font-size: 13px;
+  padding:4px 8px; border-radius:6px; border:1px solid var(--border);
+  background:var(--card); color:var(--text); font-family:inherit; font-size:12px;
 }
-.date-nav input[type="date"]:focus { border-color: var(--accent); outline: none; }
+.date-nav input[type="date"]:focus { border-color:var(--accent); outline:none; }
 
-/* ── Controls ── */
-.controls {
-  display: flex; gap: 10px; flex-wrap: wrap;
-  margin-bottom: 16px; align-items: center;
+/* ── Filter bar ── */
+.filter-bar {
+  background:#0d0d15; border-bottom:1px solid var(--border);
+  padding:10px 20px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
 }
-.controls select, .controls input {
-  padding: 9px 14px; border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--card); color: var(--text);
-  font-size: 13px; font-family: inherit;
-}
-.controls select:focus, .controls input:focus { border-color: var(--accent); outline: none; }
-.btn {
-  padding: 9px 18px; border-radius: 8px; border: none;
-  font-weight: 700; cursor: pointer; font-size: 13px;
-  font-family: inherit; transition: all 0.15s;
-}
-.btn-primary {
-  background: linear-gradient(135deg, var(--accent), #00c48c);
-  color: #000;
-}
-.btn-accent2 {
-  background: linear-gradient(135deg, var(--accent2), #6841e0);
-  color: #fff;
-}
-.btn-gold {
-  background: linear-gradient(135deg, var(--gold), #f0a800);
-  color: #000;
-}
-.btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
-
-/* ── Sport Chips (multi-select) ── */
-.sport-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
 .sport-chip {
-  padding: 6px 14px; border-radius: 20px; font-size: 12px;
-  font-weight: 600; cursor: pointer; user-select: none;
-  border: 1px solid var(--border); background: var(--card);
-  color: var(--dim); transition: all 0.15s;
+  padding:5px 14px; border-radius:20px; font-size:12px; font-weight:600;
+  cursor:pointer; border:1px solid var(--border); color:var(--dim);
+  background:transparent; transition:all 0.15s;
 }
-.sport-chip:hover { border-color: var(--accent); color: var(--text); }
-.sport-chip.active {
-  background: var(--accent-glow); border-color: var(--accent);
-  color: var(--accent);
+.sport-chip:hover { border-color:var(--accent); color:var(--text); }
+.sport-chip.active { background:var(--accent-light); border-color:var(--accent); color:var(--accent); }
+
+/* ── Main tabs ── */
+.main-tabs {
+  display:flex; gap:0; background:#0d0d15;
+  border-bottom:2px solid var(--border); padding:0 20px;
+  overflow-x:auto; flex-wrap:nowrap;
+}
+.main-tab {
+  padding:12px 18px; cursor:pointer; color:var(--dim); white-space:nowrap;
+  border-bottom:2px solid transparent; margin-bottom:-2px;
+  font-weight:600; font-size:14px; background:none;
+  border-top:none; border-left:none; border-right:none;
+  font-family:inherit; transition:all 0.2s;
+}
+.main-tab:hover { color:var(--text); }
+.main-tab.active { color:#fff; border-bottom-color:#fff; }
+
+/* ── Controls bar ── */
+.controls-bar {
+  padding:10px 20px; display:flex; gap:8px; flex-wrap:wrap;
+  background:var(--card); border-bottom:1px solid var(--border); align-items:center;
+}
+.ctrl-input {
+  padding:7px 12px; border-radius:6px; border:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-size:13px; font-family:inherit; width:120px;
+}
+.ctrl-select {
+  padding:7px 12px; border-radius:6px; border:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-size:13px; font-family:inherit;
+}
+.ctrl-input:focus, .ctrl-select:focus { border-color:var(--accent); outline:none; }
+.btn {
+  padding:8px 18px; border-radius:6px; border:none;
+  font-weight:700; cursor:pointer; font-size:13px; font-family:inherit; transition:all 0.15s;
+}
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-gold { background:#b45309; color:#fff; }
+.btn:hover { opacity:0.9; transform:translateY(-1px); }
+
+/* ── Match grid ── */
+.match-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(min(580px,100%), 1fr));
+  gap:1px; background:var(--border); margin-top:1px;
 }
 
-/* ── Tabs ── */
-.tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid var(--border); }
-.tab {
-  padding: 10px 22px; cursor: pointer; color: var(--dim);
-  border-bottom: 2px solid transparent; margin-bottom: -2px;
-  font-weight: 600; font-size: 14px; transition: all 0.2s;
-}
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+/* ── HRB Match card ── */
+.hrb-card { background:var(--card); overflow:hidden; }
 
-/* ── Match Cards ── */
-.match-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(480px, 100%), 1fr)); gap: 16px; }
-
-.match-card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 14px; overflow: hidden;
-  transition: all 0.2s;
+.hrb-card-header {
+  padding:14px 16px 12px; border-bottom:1px solid var(--border);
 }
-.match-card:hover { border-color: var(--accent); background: var(--card-hover); }
-
-.match-header {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 14px 16px; border-bottom: 1px solid var(--border);
-  background: rgba(0,229,160,0.02);
+.hrb-breadcrumb {
+  font-size:0.72em; color:var(--dim); margin-bottom:8px;
+  display:flex; align-items:center; gap:4px; flex-wrap:wrap;
 }
-.match-teams { font-weight: 700; font-size: 1.05em; }
-.match-teams .vs { color: var(--dim); font-weight: 400; margin: 0 6px; }
-.match-meta { color: var(--dim); font-size: 0.8em; margin-top: 4px; }
-.match-meta span { margin-right: 12px; }
-.match-time-badge {
-  text-align: right; white-space: nowrap;
+.hrb-breadcrumb b { color:var(--text); }
+.hrb-match-teams { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+.hrb-team { font-weight:700; font-size:1.05em; flex:1; }
+.hrb-team.away { text-align:right; }
+.hrb-vs {
+  font-size:0.75em; color:var(--dim); font-weight:400;
+  padding:3px 8px; background:rgba(255,255,255,0.04); border-radius:4px; white-space:nowrap;
 }
-.match-time-badge .time { font-weight: 700; font-size: 1.1em; color: var(--accent); }
-.match-time-badge .date { font-size: 0.75em; color: var(--dim); }
-
-.match-markets { padding: 12px 16px; }
-.market-group { margin-bottom: 12px; }
-.market-group:last-child { margin-bottom: 0; }
-.market-label {
-  font-size: 0.7em; text-transform: uppercase; letter-spacing: 1px;
-  color: var(--dim); font-weight: 700; margin-bottom: 6px;
-  display: flex; align-items: center; gap: 6px;
-}
-.market-label .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-
-.market-picks { display: flex; gap: 6px; flex-wrap: wrap; }
-.pick-chip {
-  padding: 6px 12px; border-radius: 8px; font-size: 0.8em;
-  font-weight: 600; border: 1px solid var(--border);
-  background: rgba(255,255,255,0.02); cursor: default;
-  display: flex; align-items: center; gap: 6px;
-  transition: all 0.15s;
-}
-.pick-chip:hover { border-color: var(--accent); }
-.pick-chip .odds-tag {
-  background: rgba(0,229,160,0.1); color: var(--accent);
-  padding: 1px 6px; border-radius: 4px; font-size: 0.85em;
-}
-.pick-chip .conf-tag { font-size: 0.85em; }
-.conf-high { color: var(--green); }
-.conf-mid { color: var(--yellow); }
-.conf-low { color: var(--orange); }
-.push-tag {
-  font-size: 0.7em; color: var(--yellow); background: rgba(255,190,11,0.1);
-  padding: 1px 6px; border-radius: 4px;
+.hrb-match-time {
+  font-size:0.8em; color:var(--dim); text-align:center;
+  display:flex; align-items:center; gap:6px; justify-content:center;
 }
 
-/* ── Parlay Section ── */
-.parlay-section {
-  background: var(--card); border: 2px solid var(--accent2);
-  border-radius: 16px; padding: 20px; margin-bottom: 20px;
-  box-shadow: 0 0 30px var(--accent2-glow);
+/* ── Inner tabs ── */
+.hrb-inner-tabs {
+  display:flex; border-bottom:1px solid var(--border);
+  overflow-x:auto; background:var(--card);
 }
-.parlay-title {
-  font-size: 1.3em; font-weight: 800; margin-bottom: 16px;
-  display: flex; align-items: center; gap: 10px;
+.hrb-inner-tab {
+  padding:10px 16px; cursor:pointer; font-size:13px; font-weight:600;
+  color:var(--dim); border-bottom:2px solid transparent; margin-bottom:-1px;
+  white-space:nowrap; background:none;
+  border-top:none; border-left:none; border-right:none;
+  font-family:inherit; transition:all 0.15s;
 }
-.parlay-title .badge {
-  background: var(--accent2); color: #fff; padding: 3px 10px;
-  border-radius: 12px; font-size: 0.6em; text-transform: uppercase;
-  letter-spacing: 1px;
-}
+.hrb-inner-tab:hover { color:var(--text); }
+.hrb-inner-tab.active { color:#fff; border-bottom-color:#fff; }
 
-.parlay-leg {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 14px; border-radius: 10px; margin-bottom: 6px;
-  background: rgba(255,255,255,0.02); border: 1px solid var(--border);
-  transition: border-color 0.15s;
+/* ── Moneyline grid ── */
+.hrb-ml-header {
+  display:grid; grid-template-columns:1fr 90px 90px 90px;
+  padding:8px 16px; border-bottom:1px solid var(--border);
+  font-size:0.7em; color:var(--dim); font-weight:700;
+  text-transform:uppercase; letter-spacing:0.5px;
 }
-.parlay-leg:hover { border-color: var(--accent); }
-.leg-num {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: var(--accent2); color: #fff; font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.8em; flex-shrink: 0;
+.hrb-ml-header span { text-align:center; }
+.hrb-ml-header span:first-child { text-align:left; }
+.hrb-ml-row {
+  display:grid; grid-template-columns:1fr 90px 90px 90px;
+  padding:10px 16px; border-bottom:1px solid var(--border);
+  align-items:center; gap:6px;
 }
-.leg-info { flex: 1; margin-left: 12px; }
-.leg-match { font-weight: 600; font-size: 0.95em; }
-.leg-detail { color: var(--dim); font-size: 0.8em; margin-top: 2px; }
-.leg-pick {
-  text-align: right; font-weight: 700; color: var(--accent);
-  font-size: 0.95em; white-space: nowrap; margin-left: 12px;
+.hrb-ml-teams { font-size:0.82em; color:var(--dim); line-height:1.6; }
+.hrb-odds-btn {
+  text-align:center; background:var(--odds-bg); border-radius:6px;
+  padding:8px 4px; font-weight:700; font-size:0.88em;
+  cursor:pointer; transition:all 0.15s; border:1px solid transparent;
 }
-.leg-pick .odds-sm { color: var(--dim); font-weight: 400; font-size: 0.85em; }
+.hrb-odds-btn:hover { background:var(--odds-hover); border-color:var(--accent); }
+.hrb-odds-btn.positive { color:#22c55e; }
+.hrb-odds-btn.negative { color:#f0f0f0; }
+.hrb-odds-btn.neutral { color:var(--dim); }
 
-.parlay-summary {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px; margin-top: 16px; padding-top: 16px;
-  border-top: 1px solid var(--border);
+/* ── Market accordion rows ── */
+.hrb-market-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:13px 16px; border-bottom:1px solid var(--border);
+  cursor:pointer; transition:background 0.1s; gap:8px;
 }
-.summary-item {
-  text-align: center; padding: 10px;
-  background: rgba(0,229,160,0.03); border-radius: 8px;
+.hrb-market-row:hover { background:rgba(255,255,255,0.02); }
+.hrb-market-name { font-size:0.9em; font-weight:500; flex:1; }
+.hrb-market-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.sgp-badge {
+  font-size:0.65em; font-weight:800; color:#fff;
+  background:var(--accent); padding:3px 7px; border-radius:4px; letter-spacing:0.5px;
 }
-.summary-item .value { font-size: 1.3em; font-weight: 700; color: var(--accent); }
-.summary-item .label { font-size: 0.7em; color: var(--dim); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.expand-arrow { color:var(--dim); font-size:12px; transition:transform 0.2s; }
+.expand-arrow.open { transform:rotate(180deg); }
 
-/* ── Value Bets ── */
-.value-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); gap: 14px; }
+/* ── Expanded picks panel ── */
+.hrb-picks-panel {
+  display:none; border-bottom:1px solid var(--border);
+  background:rgba(0,0,0,0.25);
+}
+.hrb-picks-panel.open { display:block; }
+.hrb-pick-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:9px 16px; border-bottom:1px solid rgba(255,255,255,0.04); gap:8px;
+}
+.hrb-pick-row:last-child { border-bottom:none; }
+.hrb-pick-name { font-size:0.87em; font-weight:600; flex:1; }
+.hrb-pick-meta { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.hrb-pick-odds {
+  background:var(--odds-bg); padding:4px 10px; border-radius:5px;
+  font-size:0.82em; font-weight:700;
+}
+.hrb-pick-conf { font-size:0.78em; font-weight:700; }
+.conf-hi { color:#22c55e; }
+.conf-md { color:#eab308; }
+.conf-lo { color:#f97316; }
+
+/* ── Loading / empty ── */
+.loading-box { text-align:center; padding:60px 20px; color:var(--dim); }
+.spinner {
+  width:36px; height:36px; border:3px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%;
+  animation:spin 0.8s linear infinite; margin:0 auto 14px;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.empty-box { text-align:center; padding:60px 20px; color:var(--dim); }
+
+/* ── Parlay cards ── */
+.parlay-wrap { padding:16px; }
+.parlay-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:10px; overflow:hidden; margin-bottom:16px;
+}
+.parlay-card-header {
+  background:rgba(124,58,237,0.1); border-bottom:1px solid var(--border);
+  padding:14px 16px; display:flex; align-items:center; gap:10px;
+}
+.parlay-card-title { font-weight:700; font-size:1em; flex:1; }
+.parlay-type-badge {
+  font-size:0.65em; font-weight:800; color:#fff;
+  background:var(--accent); padding:3px 10px; border-radius:4px;
+  text-transform:uppercase; letter-spacing:0.5px;
+}
+.parlay-leg-row {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 16px; border-bottom:1px solid var(--border);
+}
+.leg-num-circle {
+  width:28px; height:28px; border-radius:50%; background:var(--accent);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:0.78em; color:#fff; flex-shrink:0;
+}
+.leg-info { flex:1; min-width:0; }
+.leg-match-name { font-weight:600; font-size:0.9em; }
+.leg-detail { font-size:0.75em; color:var(--dim); margin-top:2px; }
+.leg-pick-right { text-align:right; flex-shrink:0; }
+.leg-pick-name { font-weight:700; color:#fff; font-size:0.9em; }
+.leg-pick-odds { color:var(--dim); font-size:0.78em; margin-top:2px; }
+.parlay-stats {
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(100px,1fr)); gap:0;
+  border-top:1px solid var(--border);
+}
+.stat-item { padding:12px; text-align:center; border-right:1px solid var(--border); }
+.stat-item:last-child { border-right:none; }
+.stat-value { font-weight:700; font-size:1.1em; color:var(--accent); }
+.stat-label { font-size:0.68em; color:var(--dim); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+
+/* ── Value bets grid ── */
+.value-grid {
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(min(380px,100%),1fr));
+  gap:10px; padding:16px;
+}
 .value-card {
-  background: var(--card); border-left: 3px solid var(--gold);
-  border-radius: 10px; padding: 16px;
-  border-right: 1px solid var(--border);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-.value-card .ev-badge {
-  background: rgba(255,215,0,0.12); color: var(--gold);
-  padding: 3px 10px; border-radius: 12px; font-weight: 700;
-  font-size: 0.85em;
+  background:var(--card); border:1px solid var(--border); border-radius:8px;
+  padding:14px; border-left:3px solid var(--gold);
 }
 
-/* ── Loading/Empty ── */
-.loading { text-align: center; padding: 60px; color: var(--dim); }
-.loading .spinner {
-  width: 40px; height: 40px; border: 3px solid var(--border);
-  border-top-color: var(--accent); border-radius: 50%;
-  animation: spin 0.8s linear infinite; margin: 0 auto 15px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.empty { text-align: center; padding: 60px; color: var(--dim); }
-
-#content { min-height: 350px; }
-
+/* ── Footer ── */
 footer {
-  text-align: center; padding: 20px; color: var(--dim);
-  font-size: 0.8em; border-top: 1px solid var(--border); margin-top: 30px;
+  padding:20px; text-align:center; color:var(--dim);
+  font-size:0.78em; border-top:1px solid var(--border); margin-top:20px;
 }
 
-/* ── Mobile Responsive ─────────────────────────────────────────── */
-@media (max-width: 768px) {
-  .container { padding: 8px 10px; }
-  header { padding: 14px 0 12px; }
-  header h1 { font-size: 1.25em; letter-spacing: -0.3px; }
-  header .sub { font-size: 0.75em; }
-  header .date-badge { font-size: 0.72em; padding: 3px 10px; }
-
-  /* Date navigator: wrap and center on mobile */
-  .date-nav { justify-content: center; gap: 6px; }
-  .date-nav-label { width: 100%; order: -1; text-align: center; font-size: 0.9em; }
-  .date-nav-btn { padding: 4px 10px; font-size: 12px; }
-  .date-nav input[type="date"] { font-size: 12px; padding: 4px 8px; }
-
-  /* Tabs: horizontal scroll */
-  .tabs {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    padding-bottom: 1px;
-  }
-  .tabs::-webkit-scrollbar { display: none; }
-  .tab { padding: 8px 12px; font-size: 12px; white-space: nowrap; }
-
-  /* Sport chips */
-  .sport-chip { font-size: 11px; padding: 5px 10px; }
-
-  /* Controls: stack vertically */
-  .controls { flex-direction: column; gap: 8px; }
-  .controls input, .controls select { width: 100%; box-sizing: border-box; }
-  .btn { width: 100%; padding: 12px; font-size: 14px; }
-
-  /* Grids: single column */
-  .match-grid { grid-template-columns: 1fr !important; gap: 10px; }
-  .value-grid { grid-template-columns: 1fr !important; gap: 10px; }
-
-  /* Match card header: stack */
-  .match-header { flex-direction: column; align-items: flex-start; gap: 6px; }
-  .match-time-badge { text-align: left; display: flex; align-items: center; gap: 10px; }
-  .match-time-badge .time { font-size: 1em; }
-  .match-time-badge .date { font-size: 0.75em; }
-  .match-teams { font-size: 0.95em; }
-
-  /* Pick chips: wrap tightly */
-  .pick-chip { font-size: 0.75em; padding: 5px 9px; }
-
-  /* Parlay legs: stack */
-  .parlay-section { padding: 14px; }
-  .parlay-title { font-size: 1.1em; flex-wrap: wrap; gap: 6px; }
-  .parlay-leg { flex-wrap: wrap; gap: 6px; }
-  .leg-pick { text-align: left; margin-left: 40px; font-size: 0.9em; }
-  .parlay-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .summary-item .value { font-size: 1.1em; }
-  .summary-item { padding: 8px; }
-
-  /* Value cards */
-  .value-card { padding: 12px; }
+/* ── Responsive ── */
+@media (max-width:768px) {
+  .match-grid { grid-template-columns:1fr; }
+  .hrb-ml-header, .hrb-ml-row { grid-template-columns:1fr 72px 72px 72px; }
+  .parlay-leg-row { flex-wrap:wrap; }
+  .leg-pick-right { text-align:left; width:100%; margin-left:40px; }
+  .parlay-stats { grid-template-columns:repeat(2,1fr); }
+  .controls-bar { gap:6px; }
+  .ctrl-input, .ctrl-select { width:100%; }
+  .btn { width:100%; padding:11px; }
+  .main-tabs { overflow-x:auto; }
+  .main-tab { font-size:12px; padding:10px 12px; }
 }
-
-@media (max-width: 400px) {
-  header h1 { font-size: 1.05em; }
-  .tab { padding: 7px 10px; font-size: 11px; }
-  .parlay-summary { grid-template-columns: repeat(2, 1fr); }
+@media (max-width:400px) {
+  .hrb-ml-header, .hrb-ml-row { grid-template-columns:1fr 60px 60px 60px; }
+  .hrb-odds-btn { font-size:0.78em; padding:7px 2px; }
 }
 </style>
 </head>
 <body>
 <div class="container">
-  <header>
-    <h1>🏆 Bet Prediction <span class="glow">Abibi</span></h1>
-    <div class="sub">Powered by SofaScore Data • Statistical Analysis • AI Reasoning</div>
-    <div class="date-badge" id="todayDate"></div>
-  </header>
 
-  <!-- Sport multi-select chips -->
-  <div class="sport-chips" id="sportChips">
-    <div class="sport-chip active" data-sport="" onclick="toggleSport(this)">🌐 All Sports</div>
-    <div class="sport-chip" data-sport="football" onclick="toggleSport(this)">⚽ Soccer</div>
-    <div class="sport-chip" data-sport="basketball" onclick="toggleSport(this)">🏀 Basketball</div>
-    <div class="sport-chip" data-sport="tennis" onclick="toggleSport(this)">🎾 Tennis</div>
-    <div class="sport-chip" data-sport="baseball" onclick="toggleSport(this)">⚾ Baseball</div>
-    <div class="sport-chip" data-sport="american-football" onclick="toggleSport(this)">🏈 Football</div>
-    <div class="sport-chip" data-sport="volleyball" onclick="toggleSport(this)">🏐 Volleyball</div>
-    <div class="sport-chip" data-sport="ice-hockey" onclick="toggleSport(this)">🏒 Hockey</div>
-  </div>
-
-  <!-- Filter Mode Chips -->
-  <div class="sport-chips" id="filterChips" style="margin-bottom:8px">
-    <span style="color:var(--dim);font-size:12px;font-weight:600;margin-right:4px">FILTER:</span>
-    <div class="sport-chip active" data-filter="balanced" onclick="setFilter(this)">⚖️ Balanced</div>
-    <div class="sport-chip" data-filter="safe" onclick="setFilter(this)">🛡️ Safe (75%+)</div>
-    <div class="sport-chip" data-filter="value" onclick="setFilter(this)">💎 Value (+EV)</div>
-  </div>
-
-  <div class="controls">
-    <input type="number" id="minConf" value="50" min="0" max="100" placeholder="Min confidence %">
-    <input type="number" id="parlayLegs" value="6" min="2" max="15" placeholder="Parlay legs">
-    <select id="parlayStrategy">
-      <option value="balanced">⚖️ Balanced</option>
-      <option value="safe">🛡️ Safe</option>
-      <option value="value">💎 Value</option>
-    </select>
-    <button class="btn btn-primary" onclick="loadMatches()">📊 All Markets</button>
-    <button class="btn btn-accent2" onclick="loadParlay()">🎯 Build Parlay</button>
-    <button class="btn btn-gold" onclick="loadValueBets()">💰 Value Bets</button>
-  </div>
-
-  <!-- Date Navigator -->
-  <div class="date-nav">
-    <button class="date-nav-btn" onclick="shiftDate(-1)">&#8592; Prev</button>
-    <button class="date-nav-btn" onclick="shiftDate(-2)">&#8676; -2d</button>
-    <div class="date-nav-label" id="dateNavLabel">Today</div>
-    <input type="date" id="dateNavPicker" onchange="setNavDate(this.value)">
-    <button class="date-nav-btn today-btn" onclick="setNavDate(localDateStr())">Today</button>
-    <button class="date-nav-btn" onclick="shiftDate(1)">Tomorrow &#8594;</button>
-    <button class="date-nav-btn" onclick="shiftDate(2)">+2d &#8677;</button>
-  </div>
-
-  <div class="tabs">
-    <div class="tab active" data-tab="matches" onclick="loadMatches()">🏟️ Matches & Markets</div>
-    <div class="tab" data-tab="parlay" onclick="loadParlay()">🎯 Parlay Builder</div>
-    <div class="tab" data-tab="sgp" onclick="loadSGPs()">🎰 Same Game Parlays</div>
-    <div class="tab" data-tab="roundrobin" onclick="loadRoundRobin()">🔄 Round Robin</div>
-    <div class="tab" data-tab="teaser" onclick="loadTeaser()">🎲 Teaser</div>
-    <div class="tab" data-tab="flex" onclick="loadFlexParlay()">💪 Flex Parlay</div>
-    <div class="tab" data-tab="value" onclick="loadValueBets()">💰 Value Bets</div>
-  </div>
-
-  <div id="content">
-    <div class="empty">
-      <p style="font-size:3em;margin-bottom:12px;">🏆</p>
-      <p style="font-size:1.1em;font-weight:600;">Premium AI Bet Predictions — Hard Rock Bet Style</p>
-      <p style="margin-top:6px;">Click <b style="color:var(--accent)">All Markets</b> to see every match with all available bet types</p>
-      <p style="margin-top:4px;font-size:0.85em;">SGP • Round Robin • Teaser • Flex Parlay • 23+ Bet Types • Mix Any Sports!</p>
-    </div>
-  </div>
-
-  <footer>
-    <p>⚠️ Bet responsibly. Predictions are for entertainment and informational purposes only.</p>
-    <p>Data sourced from API-Football & ESPN. Past performance does not guarantee future results.</p>
-  </footer>
+<!-- Top Nav -->
+<div class="top-nav">
+  <span class="logo">🏆 Bet Prediction Abibi</span>
+  <span class="live-time" id="liveTime"></span>
 </div>
+
+<!-- Date Navigator -->
+<div class="date-nav">
+  <button class="date-nav-btn" onclick="shiftDate(-1)">&#9664; Prev</button>
+  <button class="date-nav-btn" onclick="shiftDate(-2)">&#171; -2d</button>
+  <div class="date-nav-label" id="dateNavLabel">Today</div>
+  <input type="date" id="dateNavPicker" onchange="setNavDate(this.value)">
+  <button class="date-nav-btn today" onclick="setNavDate(localDateStr())">Today</button>
+  <button class="date-nav-btn" onclick="shiftDate(1)">Tomorrow &#9654;</button>
+  <button class="date-nav-btn" onclick="shiftDate(2)">+2d &#187;</button>
+</div>
+
+<!-- Sport chips -->
+<div class="filter-bar">
+  <span style="font-size:12px;color:var(--dim);font-weight:600;margin-right:4px">SPORT:</span>
+  <div class="sport-chip active" data-sport="" onclick="toggleSport(this)">&#127758; All</div>
+  <div class="sport-chip" data-sport="football" onclick="toggleSport(this)">&#9917; Soccer</div>
+  <div class="sport-chip" data-sport="basketball" onclick="toggleSport(this)">&#127936; Basketball</div>
+  <div class="sport-chip" data-sport="tennis" onclick="toggleSport(this)">&#127934; Tennis</div>
+  <div class="sport-chip" data-sport="baseball" onclick="toggleSport(this)">&#9918; Baseball</div>
+  <div class="sport-chip" data-sport="american-football" onclick="toggleSport(this)">&#127944; Football</div>
+  <div class="sport-chip" data-sport="volleyball" onclick="toggleSport(this)">&#127952; Volleyball</div>
+  <div class="sport-chip" data-sport="ice-hockey" onclick="toggleSport(this)">&#127954; Hockey</div>
+</div>
+
+<!-- Main tabs -->
+<div class="main-tabs">
+  <button class="main-tab active" data-tab="matches" onclick="switchMain(this,'matches')">Matches</button>
+  <button class="main-tab" data-tab="parlay" onclick="switchMain(this,'parlay')">Parlay</button>
+  <button class="main-tab" data-tab="sgp" onclick="switchMain(this,'sgp')">SGP</button>
+  <button class="main-tab" data-tab="roundrobin" onclick="switchMain(this,'roundrobin')">Round Robin</button>
+  <button class="main-tab" data-tab="teaser" onclick="switchMain(this,'teaser')">Teaser</button>
+  <button class="main-tab" data-tab="flex" onclick="switchMain(this,'flex')">Flex Parlay</button>
+  <button class="main-tab" data-tab="value" onclick="switchMain(this,'value')">Value Bets</button>
+</div>
+
+<!-- Controls bar -->
+<div class="controls-bar">
+  <input class="ctrl-input" type="number" id="minConf" value="50" min="0" max="100" placeholder="Min Conf %">
+  <input class="ctrl-input" type="number" id="parlayLegs" value="6" min="2" max="15" placeholder="Legs">
+  <select class="ctrl-select" id="parlayStrategy">
+    <option value="balanced">Balanced</option>
+    <option value="safe">Safe</option>
+    <option value="value">Value</option>
+  </select>
+  <button class="btn btn-primary" onclick="reloadActive()">Refresh</button>
+  <button class="btn btn-gold" onclick="loadValueBets()">Value Bets</button>
+</div>
+
+<div id="content">
+  <div class="loading-box"><div class="spinner"></div><p>Loading...</p></div>
+</div>
+
+<footer>
+  <p>&#9888;&#65039; Bet responsibly. For informational and entertainment purposes only.</p>
+  <p>Data from API-Football &amp; ESPN. Past performance does not guarantee future results.</p>
+</footer>
+
+</div><!-- /container -->
 
 <script>
 const API = '';
 let selectedSports = [];
-let activeFilter = 'balanced';
 let activeTab = 'matches';
-let activeDateStr = '';  // YYYY-MM-DD, set on boot
+let activeDateStr = '';
+let innerTabState = {};
 
-// Returns today's date in the user's LOCAL timezone as YYYY-MM-DD
 function localDateStr() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
 }
-
-// Format a YYYY-MM-DD into a human-readable label
-function dateLabelOf(ymd) {
-  const today = localDateStr();
-  const d = new Date(ymd + 'T12:00:00');
-  const base = d.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
-  if (ymd === today) return `📅 Today — ${base}`;
-  const tomorrow = offsetDate(today, 1);
-  const yesterday = offsetDate(today, -1);
-  if (ymd === tomorrow) return `🔮 Tomorrow — ${base}`;
-  if (ymd === yesterday) return `📜 Yesterday — ${base}`;
-  const delta = Math.round((new Date(ymd) - new Date(today)) / 86400000);
-  const tag = delta > 0 ? `+${delta}d` : `${delta}d`;
-  return `📅 ${base} (${tag})`;
-}
-
 function offsetDate(ymd, days) {
-  const d = new Date(ymd + 'T12:00:00');
-  d.setDate(d.getDate() + days);
+  const d = new Date(ymd+'T12:00:00'); d.setDate(d.getDate()+days);
   return d.toISOString().split('T')[0];
 }
-
-function setNavDate(ymd, reload = true) {
+function dateLabelOf(ymd) {
+  const today = localDateStr();
+  const d = new Date(ymd+'T12:00:00');
+  const base = d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  if (ymd===today) return `Today — ${base}`;
+  if (ymd===offsetDate(today,1)) return `Tomorrow — ${base}`;
+  if (ymd===offsetDate(today,-1)) return `Yesterday — ${base}`;
+  const delta = Math.round((new Date(ymd)-new Date(today))/86400000);
+  return `${base} (${delta>0?'+':''}${delta}d)`;
+}
+function setNavDate(ymd, reload=true) {
   activeDateStr = ymd;
   document.getElementById('dateNavLabel').textContent = dateLabelOf(ymd);
   document.getElementById('dateNavPicker').value = ymd;
-  if (reload) reloadActiveTab();
+  if (reload) reloadActive();
+}
+function shiftDate(d) { setNavDate(offsetDate(activeDateStr, d)); }
+function fmtTime(s) {
+  if (!s) return '';
+  const d = new Date(s); if (isNaN(d)) return s;
+  return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+}
+function fmtDate(s) {
+  if (!s) return '';
+  const d = new Date(s); if (isNaN(d)) return s;
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
 
-function shiftDate(delta) {
-  setNavDate(offsetDate(activeDateStr, delta));
-}
+// Live clock
+setInterval(() => {
+  const el = document.getElementById('liveTime');
+  if (el) el.textContent = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+}, 1000);
 
-// ── Time formatting: convert UTC ISO strings to user's local timezone ──
-function fmtTime(utcStr) {
-  if (!utcStr) return '';
-  const d = new Date(utcStr);
-  if (isNaN(d)) return utcStr;
-  return d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', hour12:true});
-}
-function fmtDate(utcStr) {
-  if (!utcStr) return '';
-  const d = new Date(utcStr);
-  if (isNaN(d)) return utcStr;
-  return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
-}
-
-// Boot: init date navigator to today
 setNavDate(localDateStr(), false);
 
-// Set today's date in header
-document.getElementById('todayDate').textContent =
-  '📅 ' + new Date().toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'})
-  + ' • ' + new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
-
 function toggleSport(el) {
-  const sport = el.dataset.sport;
-  if (sport === '') {
-    document.querySelectorAll('#sportChips .sport-chip').forEach(c => c.classList.remove('active'));
-    el.classList.add('active');
-    selectedSports = [];
+  const s = el.dataset.sport;
+  if (s === '') {
+    document.querySelectorAll('.sport-chip').forEach(c=>c.classList.remove('active'));
+    el.classList.add('active'); selectedSports = [];
   } else {
-    document.querySelector('#sportChips .sport-chip[data-sport=""]').classList.remove('active');
+    document.querySelector('.sport-chip[data-sport=""]').classList.remove('active');
     el.classList.toggle('active');
-    selectedSports = [...document.querySelectorAll('#sportChips .sport-chip.active')]
-      .map(c => c.dataset.sport).filter(Boolean);
-    if (selectedSports.length === 0) {
-      document.querySelector('#sportChips .sport-chip[data-sport=""]').classList.add('active');
-    }
+    selectedSports = [...document.querySelectorAll('.sport-chip.active')].map(c=>c.dataset.sport).filter(Boolean);
+    if (!selectedSports.length) document.querySelector('.sport-chip[data-sport=""]').classList.add('active');
   }
-  // Auto-reload current view
-  reloadActiveTab();
+  reloadActive();
 }
-
-function setFilter(el) {
-  document.querySelectorAll('#filterChips .sport-chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  activeFilter = el.dataset.filter;
-  // Update confidence input to match filter
-  if (activeFilter === 'safe') {
-    document.getElementById('minConf').value = 75;
-  } else if (activeFilter === 'value') {
-    document.getElementById('minConf').value = 40;
-  } else {
-    document.getElementById('minConf').value = 50;
-  }
-  // Also sync parlay strategy
-  document.getElementById('parlayStrategy').value = activeFilter;
-  reloadActiveTab();
+function switchMain(el, tab) {
+  document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active'); activeTab = tab; reloadActive();
 }
-
-function reloadActiveTab() {
-  if (activeTab === 'matches') loadMatches();
-  else if (activeTab === 'parlay') loadParlay();
-  else if (activeTab === 'sgp') loadSGPs();
-  else if (activeTab === 'roundrobin') loadRoundRobin();
-  else if (activeTab === 'teaser') loadTeaser();
-  else if (activeTab === 'flex') loadFlexParlay();
-  else if (activeTab === 'value') loadValueBets();
+function reloadActive() {
+  if (activeTab==='matches') loadMatches();
+  else if (activeTab==='parlay') loadParlay();
+  else if (activeTab==='sgp') loadSGPs();
+  else if (activeTab==='roundrobin') loadRoundRobin();
+  else if (activeTab==='teaser') loadTeaser();
+  else if (activeTab==='flex') loadFlexParlay();
+  else if (activeTab==='value') loadValueBets();
   else loadMatches();
 }
-
-function switchTab(tab) {
-  activeTab = tab;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
-}
-
 function showLoading() {
-  document.getElementById('content').innerHTML = `
-    <div class="loading">
-      <div class="spinner"></div>
-      <p>🔄 Analyzing games & crunching statistics across all sports...</p>
-    </div>`;
+  document.getElementById('content').innerHTML = '<div class="loading-box"><div class="spinner"></div><p>Analyzing games...</p></div>';
 }
+function confClass(c) { return c>=75?'conf-hi':c>=60?'conf-md':'conf-lo'; }
 
-function confClass(conf) {
-  if (conf >= 75) return 'conf-high';
-  if (conf >= 60) return 'conf-mid';
-  return 'conf-low';
-}
+// Bet type → tab category
+const GAME_LINE_TYPES = new Set(['moneyline','game_result_90','spread','alternate_spread','over_under','alternate_total','btts','double_chance','draw_no_bet','correct_score','game_props','first_to_score','overtime','race_to','futures','winning_margin']);
+const PLAYER_PROP_TYPES = new Set(['player_props']);
+const HALVES_TYPES = new Set(['first_half','halftime_result','halftime_over_under']);
+const TEAM_TYPES = new Set(['team_total','quarter_props']);
+const GOALS_TYPES = new Set(['odd_even','corners']);
+// SGP-eligible
+const SGP_TYPES = new Set(['over_under','btts','double_chance','game_result_90','spread','correct_score','player_props','first_half','halftime_result','halftime_over_under','team_total','odd_even','alternate_spread','alternate_total','game_props','winning_margin']);
 
-function confEmoji(conf) {
-  if (conf >= 75) return '🟢';
-  if (conf >= 65) return '🟡';
-  return '🟠';
-}
-
-// Market type labels with emojis
-const marketLabels = {
-  'moneyline': '🏆 Winner',
-  'game_result_90': '⚽ Game Result (90 min + Stoppage Time)',
-  'spread': '📊 Spread / Handicap',
-  'over_under': '⬆️⬇️ Total Goals/Points Over/Under',
-  'team_total': '🎯 Team-Specific Totals',
-  'btts': '⚽ Both Teams to Score',
-  'double_chance': '🛡️ Double Chance',
-  'draw_no_bet': '🔄 Draw No Bet',
-  'correct_score': '🎯 Correct Score',
-  'corners': '🔲 Corners',
-  'halftime_result': '⏱️ Half-Time Result',
-  'halftime_over_under': '⏱️ 1st Half Over/Under',
-  'player_props': '🎯 Player Props',
-  'first_half': '⏱️ First Half',
-  'game_props': '🎲 Game Props',
-  'alternate_spread': '📊 Alternate Spreads',
-  'alternate_total': '⬆️⬇️ Alternate Totals',
-  'first_to_score': '⚡ First to Score',
-  'overtime': '⏰ Overtime / Extra Time',
-  'odd_even': '🔢 Odd/Even Total',
-  'quarter_props': '📊 Quarter / Period Props',
-  'race_to': '🏃 Race to X',
-  'futures': '🏅 Futures',
+const marketNames = {
+  moneyline:'Moneyline', game_result_90:'Game Result (90 Min + Stoppage Time)',
+  spread:'Spread', alternate_spread:'Alternate Spread',
+  over_under:'Total Goals', alternate_total:'Alternate Total',
+  btts:'Both Teams to Score', double_chance:'Double Chance',
+  draw_no_bet:'Winner (Push if Tied)', correct_score:'Correct Score',
+  game_props:'Game Props', first_to_score:'First to Score',
+  overtime:'Overtime / Extra Time', odd_even:'Odd vs Even Total Goals',
+  quarter_props:'Quarter / Period Props', race_to:'Race to X',
+  futures:'Futures', first_half:'1st Half Markets',
+  halftime_result:'Half-Time Result', halftime_over_under:'1st Half Over/Under',
+  player_props:'Anytime Goalscorer', team_total:'Team Total Goals',
+  corners:'Corners Over/Under', winning_margin:'Winning Margin',
 };
+
+function oddsClass(ao) {
+  if (!ao) return 'neutral';
+  return ao.startsWith('+') ? 'positive' : 'negative';
+}
+
+function togglePanel(pid, aid) {
+  const p = document.getElementById(pid);
+  const a = document.getElementById(aid);
+  if (!p) return;
+  p.classList.toggle('open');
+  if (a) a.classList.toggle('open');
+}
+function switchInnerTab(cardId, tabKey, btn) {
+  innerTabState[cardId] = tabKey;
+  document.querySelectorAll(`[id^="ipane-${cardId}-"]`).forEach(el => el.style.display='none');
+  const pane = document.getElementById(`ipane-${cardId}-${tabKey}`);
+  if (pane) pane.style.display = 'block';
+  const container = btn.closest('.hrb-inner-tabs');
+  if (container) {
+    container.querySelectorAll('.hrb-inner-tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+  }
+}
+
+function renderMatchCard(match) {
+  const id = 'm' + (match.match_id || (match.home_team+match.away_team).replace(/\W/g,''));
+  const isFinished = match.status === 'finished';
+  const isLive = match.status === 'live';
+  const hasScore = match.home_score != null && match.away_score != null;
+
+  // Categorise predictions
+  const byCategory = {
+    gl: match.predictions.filter(p => GAME_LINE_TYPES.has(p.bet_type)),
+    pp: match.predictions.filter(p => PLAYER_PROP_TYPES.has(p.bet_type)),
+    hv: match.predictions.filter(p => HALVES_TYPES.has(p.bet_type)),
+    tm: match.predictions.filter(p => TEAM_TYPES.has(p.bet_type)),
+    go: match.predictions.filter(p => GOALS_TYPES.has(p.bet_type)),
+  };
+  const tabDefs = [
+    { key:'gl', label:'Game Lines' },
+    { key:'pp', label:'Player Props' },
+    { key:'hv', label:'Halves' },
+    { key:'tm', label:'Teams' },
+    { key:'go', label:'Goals' },
+  ].filter(t => t.key==='gl' || byCategory[t.key].length > 0);
+
+  const defaultKey = innerTabState[id] || 'gl';
+
+  let timeLine = '';
+  if (isFinished && hasScore) {
+    timeLine = `<strong style="font-size:1.2em;letter-spacing:2px">${match.home_score} &ndash; ${match.away_score}</strong>&nbsp;<span style="color:var(--dim);font-size:0.75em">&#10003; Final</span>`;
+  } else if (isLive && hasScore) {
+    timeLine = `<strong style="font-size:1.2em;color:#ef4444;letter-spacing:2px">${match.home_score} &ndash; ${match.away_score}</strong>&nbsp;<span style="color:#ef4444;font-size:0.75em">&#9679; LIVE</span>`;
+  } else {
+    timeLine = `&#128197; ${fmtDate(match.start_date)} &nbsp;&bull;&nbsp; &#9200; ${fmtTime(match.start_time)} EDT`;
+  }
+
+  function renderCatContent(key, preds) {
+    if (!preds.length) {
+      return '<div style="padding:14px 16px;color:var(--dim);font-size:0.85em">No predictions available for this category.</div>';
+    }
+    const grouped = {};
+    for (const p of preds) {
+      if (!grouped[p.bet_type]) grouped[p.bet_type] = [];
+      grouped[p.bet_type].push(p);
+    }
+    let html = '';
+
+    // Moneyline: render as HOME|TIE|AWAY grid
+    if (key === 'gl' && grouped['moneyline']) {
+      const ml = grouped['moneyline'];
+      const hp = ml.find(p => p.pick && (p.pick.toLowerCase().includes(match.home_team.toLowerCase().split(' ')[0]) || p.pick.toLowerCase().includes('home')));
+      const ap = ml.find(p => p.pick && (p.pick.toLowerCase().includes(match.away_team.toLowerCase().split(' ')[0]) || p.pick.toLowerCase().includes('away')));
+      const tp = ml.find(p => p.pick && (p.pick.toLowerCase().includes('draw') || p.pick.toLowerCase().includes('tie') || p.pick.toLowerCase() === 'x'));
+      const p0 = hp || ml[0]; const p1 = tp || ml[1]; const p2 = ap || ml[2];
+      html += `<div class="hrb-ml-header"><span></span><span>HOME</span><span>TIE</span><span>AWAY</span></div>
+        <div class="hrb-ml-row">
+          <div class="hrb-ml-teams"><div>${match.home_team}</div><div>${match.away_team}</div></div>
+          <div class="hrb-odds-btn ${p0?oddsClass(p0.american_odds):'neutral'}">${p0?(p0.american_odds||p0.odds.toFixed(2)):'-'}</div>
+          <div class="hrb-odds-btn ${p1?oddsClass(p1.american_odds):'neutral'}">${p1?(p1.american_odds||p1.odds.toFixed(2)):'-'}</div>
+          <div class="hrb-odds-btn ${p2?oddsClass(p2.american_odds):'neutral'}">${p2?(p2.american_odds||p2.odds.toFixed(2)):'-'}</div>
+        </div>`;
+      delete grouped['moneyline'];
+    }
+
+    // Remaining markets as accordion rows
+    for (const [bt, bpreds] of Object.entries(grouped)) {
+      const pid = `pp-${id}-${key}-${bt.replace(/[^a-z0-9]/g,'')}`;
+      const aid = `pa-${id}-${key}-${bt.replace(/[^a-z0-9]/g,'')}`;
+      const hasSgp = SGP_TYPES.has(bt);
+      let label = marketNames[bt] || bt.replace(/_/g,' ');
+      if (bt==='team_total' && bpreds[0]?.team_name) label = `${bpreds[0].team_name} Total Goals`;
+      html += `<div class="hrb-market-row" onclick="togglePanel('${pid}','${aid}')">
+        <span class="hrb-market-name">${label}</span>
+        <div class="hrb-market-right">
+          ${hasSgp ? '<span class="sgp-badge">SGP</span>' : ''}
+          <span class="expand-arrow" id="${aid}">&#9660;</span>
+        </div>
+      </div>
+      <div class="hrb-picks-panel" id="${pid}">`;
+      for (const p of bpreds.slice(0,8)) {
+        const od = p.american_odds || (p.odds>0?p.odds.toFixed(2):'—');
+        html += `<div class="hrb-pick-row">
+          <span class="hrb-pick-name">${p.pick}</span>
+          <div class="hrb-pick-meta">
+            <span class="hrb-pick-odds ${oddsClass(p.american_odds)}">${od}</span>
+            <span class="hrb-pick-conf ${confClass(p.confidence)}">${p.confidence.toFixed(0)}%</span>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    return html;
+  }
+
+  let tabNav = '';
+  let tabPanes = '';
+  for (const t of tabDefs) {
+    const active = t.key === defaultKey;
+    tabNav += `<button class="hrb-inner-tab${active?' active':''}" onclick="switchInnerTab('${id}','${t.key}',this)">${t.label}</button>`;
+    tabPanes += `<div id="ipane-${id}-${t.key}" style="display:${active?'block':'none'}">${renderCatContent(t.key, byCategory[t.key])}</div>`;
+  }
+
+  return `<div class="hrb-card">
+    <div class="hrb-card-header">
+      <div class="hrb-breadcrumb">
+        <span>${match.sport_emoji}</span><span>/</span>
+        <span>${match.country}</span><span>/</span>
+        <span>${match.tournament}</span><span>/</span>
+        <b>${match.home_team} vs ${match.away_team}</b>
+      </div>
+      <div class="hrb-match-teams">
+        <div class="hrb-team">${match.home_team}</div>
+        <div class="hrb-vs">vs</div>
+        <div class="hrb-team away">${match.away_team}</div>
+      </div>
+      <div class="hrb-match-time">${timeLine}</div>
+    </div>
+    <div class="hrb-inner-tabs">${tabNav}</div>
+    <div>${tabPanes}</div>
+  </div>`;
+}
 
 async function loadMatches() {
   activeTab = 'matches';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="matches"]').classList.add('active');
+  document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));
+  const mt = document.querySelector('[data-tab="matches"]'); if (mt) mt.classList.add('active');
   showLoading();
   const minConf = document.getElementById('minConf').value;
   const tdate = activeDateStr;
   const isPast = tdate < localDateStr();
-
   try {
     let matchData = [];
-
     if (isPast) {
-      // Past date: fetch raw results (all statuses, with scores)
-      const fetchOne = s =>
-        fetch(`${API}/api/past-games?target_date=${tdate}&sport=${s}&min_confidence=0`).then(r => r.json());
-      if (selectedSports.length > 0) {
-        const results = await Promise.all(selectedSports.map(fetchOne));
-        results.forEach(r => { if (Array.isArray(r)) matchData.push(...r); });
-      } else {
-        const res = await fetch(`${API}/api/past-games?target_date=${tdate}&min_confidence=0`);
-        const d = await res.json();
-        if (Array.isArray(d)) matchData = d;
-      }
+      const qsp = selectedSports.length ? `&sport=${selectedSports[0]}` : '';
+      const res = await fetch(`${API}/api/past-games?target_date=${tdate}&min_confidence=0${qsp}`);
+      const d = await res.json(); if (Array.isArray(d)) matchData = d;
     } else {
-      // Today / future: predictions with confidence filter
       if (selectedSports.length > 0) {
-        const promises = selectedSports.map(s =>
-          fetch(`${API}/api/matches?min_confidence=${minConf}&sport=${s}&target_date=${tdate}`).then(r => r.json())
-        );
-        const results = await Promise.all(promises);
-        results.forEach(r => { if (Array.isArray(r)) matchData.push(...r); });
+        const results = await Promise.all(selectedSports.map(s=>
+          fetch(`${API}/api/matches?min_confidence=${minConf}&sport=${s}&target_date=${tdate}`).then(r=>r.json())
+        ));
+        results.forEach(r=>{ if(Array.isArray(r)) matchData.push(...r); });
       } else {
         const res = await fetch(`${API}/api/matches?min_confidence=${minConf}&target_date=${tdate}`);
-        const d = await res.json();
-        if (Array.isArray(d)) matchData = d;
-      }
-
-      // Apply filter mode
-      if (activeFilter === 'safe') {
-        matchData = matchData.map(m => ({
-          ...m,
-          predictions: m.predictions.filter(p => p.confidence >= 75)
-        })).filter(m => m.predictions.length > 0);
-      } else if (activeFilter === 'value') {
-        matchData = matchData.map(m => ({
-          ...m,
-          predictions: m.predictions.filter(p => p.value_rating > 0)
-        })).filter(m => m.predictions.length > 0);
+        const d = await res.json(); if (Array.isArray(d)) matchData = d;
       }
     }
-
     if (!matchData.length) {
-      document.getElementById('content').innerHTML = '<div class="empty"><p style="font-size:2em">🔍</p><p>No matches found for this date. Try a different date or sport filter.</p></div>';
+      document.getElementById('content').innerHTML = '<div class="empty-box"><p style="font-size:2em">&#128269;</p><p>No matches found. Try a different date or sport.</p></div>';
       return;
     }
-
-    let html = '<div style="margin-bottom:12px;color:var(--dim);font-size:0.85em">';
-    if (isPast) {
-      html += `📅 ${matchData.length} matches on ${new Date(tdate + 'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
-    } else {
-      html += `📊 ${matchData.length} matches • ${matchData.reduce((s,m) => s + m.predictions.length, 0)} predictions`
-             + (activeFilter === 'safe' ? ' • 🛡️ Showing only <b style="color:var(--green)">75%+ confidence</b> picks' : '')
-             + (activeFilter === 'value' ? ' • 💎 Showing only <b style="color:var(--gold)">+EV value</b> picks' : '');
-    }
-    html += '</div>';
-    html += '<div class="match-grid">';
-
-    for (const match of matchData) {
-      const isFinished = match.status === 'finished';
-      const isLive = match.status === 'live';
-      const hasScore = match.home_score != null && match.away_score != null;
-
-      let timeBadge;
-      if (isFinished && hasScore) {
-        timeBadge = `<div style="font-size:1.4em;font-weight:800;color:var(--text);letter-spacing:3px">${match.home_score} – ${match.away_score}</div>
-                     <div style="font-size:0.7em;color:var(--dim);margin-top:2px">✅ Final</div>`;
-      } else if (isLive && hasScore) {
-        timeBadge = `<div style="font-size:1.4em;font-weight:800;color:#ef4444;letter-spacing:3px">${match.home_score} – ${match.away_score}</div>
-                     <div style="font-size:0.7em;color:#ef4444;margin-top:2px">🔴 LIVE</div>`;
-      } else {
-        timeBadge = `<div class="time">${fmtTime(match.start_time)}</div>
-                     <div class="date">📅 ${fmtDate(match.start_date)}</div>`;
-      }
-
-      // Group predictions by bet type (skip for past dates)
-      const byType = {};
-      if (!isPast) {
-        for (const p of match.predictions) {
-          if (!byType[p.bet_type]) byType[p.bet_type] = [];
-          byType[p.bet_type].push(p);
-        }
-      }
-
-    html += `<div class="match-card">
-      <div class="match-header">
-        <div>
-          <div class="match-teams">
-            ${match.sport_emoji} <strong>${match.home_team}</strong>
-            <span class="vs">vs</span>
-            <strong>${match.away_team}</strong>
-          </div>
-          <div class="match-meta">
-            <span>🏟️ ${match.tournament}</span>
-            <span>🌍 ${match.country}</span>
-          </div>
-        </div>
-        <div class="match-time-badge">${timeBadge}</div>
-      </div>
-      <div class="match-markets">`;
-
-    if (isPast || !match.predictions.length) {
-      // Past date: just show the score card, no prediction chips
-      html += `<div style="color:var(--dim);font-size:0.8em;padding:4px 0">
-        ${isFinished ? '✅ Final score above' : isLive ? '🔴 In progress' : '⏰ Scheduled — ' + fmtTime(match.start_time)}
-      </div>`;
-    } else {
-      for (const [betType, preds] of Object.entries(byType)) {
-        const label = marketLabels[betType] || betType.replace(/_/g, ' ').toUpperCase();
-        html += `<div class="market-group">
-          <div class="market-label"><div class="dot"></div>${label}</div>
-          <div class="market-picks">`;
-
-        for (const p of preds.slice(0, 5)) {
-          const oddsTag = p.odds > 0
-            ? `<span class="odds-tag">${p.american_odds || p.odds.toFixed(2)}</span>`
-            : '';
-          const pushTag = p.push_note
-            ? `<span class="push-tag">⚠️ ${p.push_note}</span>`
-            : '';
-          html += `<div class="pick-chip">
-            <span>${p.pick}</span>
-            ${oddsTag}
-            <span class="conf-tag ${confClass(p.confidence)}">${p.confidence.toFixed(0)}%</span>
-            ${pushTag}
-          </div>`;
-        }
-        html += '</div></div>';
-      }
-    }
-
-    html += '</div></div>';
-  }
-  html += '</div>';
-  document.getElementById('content').innerHTML = html;
-
+    const totalPreds = matchData.reduce((s,m)=>s+m.predictions.length,0);
+    const info = `<div style="padding:10px 20px;font-size:0.82em;color:var(--dim);border-bottom:1px solid var(--border);background:var(--card)">
+      ${matchData.length} matches${!isPast?' &bull; '+totalPreds+' total predictions':''} &mdash; ${dateLabelOf(tdate)}
+    </div>`;
+    const cards = matchData.map(m => renderMatchCard(m)).join('');
+    document.getElementById('content').innerHTML = info + '<div class="match-grid">' + cards + '</div>';
   } catch(e) {
-    document.getElementById('content').innerHTML = `<div class="empty"><p>❌ Error loading matches: ${e.message}</p></div>`;
+    document.getElementById('content').innerHTML = `<div class="empty-box"><p>&#10060; ${e.message}</p></div>`;
   }
 }
 
-async function loadParlay() {
-  activeTab = 'parlay';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="parlay"]').classList.add('active');
-  showLoading();
-  const legs = document.getElementById('parlayLegs').value;
-  const strategy = document.getElementById('parlayStrategy').value;
-
-  const body = { num_legs: parseInt(legs), strategy: strategy, target_date: localDateStr() };
-  if (selectedSports.length > 0) body.sports = selectedSports;
-
-  try {
-    const res = await fetch(`${API}/api/parlay`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.detail) {
-      document.getElementById('content').innerHTML = `<div class="empty"><p>⚠️ ${data.detail}</p></div>`;
-      return;
-    }
-
-    // Count unique sports
-    const parlaSports = new Set(data.legs.map(l => l.sport));
-    const mixLabel = parlaSports.size > 1
-      ? `🌐 Mixed Sports (${[...parlaSports].map(s => data.legs.find(l => l.sport === s).sport_emoji).join(' ')})`
-      : data.legs[0].sport_emoji + ' ' + data.legs[0].sport;
-
-    let html = `<div class="parlay-section">
-      <div class="parlay-title">
-        🎯 ${data.legs.length}-Leg Parlay
-        <span class="badge">${strategy}</span>
-        <span style="font-size:0.65em;color:var(--dim);font-weight:400;margin-left:8px">${mixLabel}</span>
-      </div>`;
-
-    for (let i = 0; i < data.legs.length; i++) {
-      const leg = data.legs[i];
-      const pushHtml = leg.push_note ? `<span class="push-tag" style="margin-left:6px">⚠️ ${leg.push_note}</span>` : '';
-      html += `<div class="parlay-leg">
-        <div class="leg-num">${i + 1}</div>
-        <div class="leg-info">
-          <div class="leg-match">${leg.sport_emoji} ${leg.home_team} vs ${leg.away_team}</div>
-          <div class="leg-detail">
-            🏟️ ${leg.tournament} • 📅 ${fmtDate(leg.start_date)} • ⏰ ${fmtTime(leg.start_time)}
-          </div>
-        </div>
-        <div class="leg-pick">
-          ${leg.pick} ${pushHtml}
-          <span class="odds-sm">${leg.american_odds || (leg.odds > 0 ? leg.odds.toFixed(2) : '')}</span>
-          <span class="conf-tag ${confClass(leg.confidence)}" style="margin-left:6px">${leg.confidence.toFixed(0)}%</span>
-        </div>
-      </div>`;
-    }
-
-    html += `<div class="parlay-summary">
-      <div class="summary-item"><div class="value">${data.combined_confidence.toFixed(1)}%</div><div class="label">Combined Conf</div></div>
-      <div class="summary-item"><div class="value">${data.combined_odds.toFixed(2)}x</div><div class="label">Combined Odds</div></div>
-      <div class="summary-item"><div class="value">${data.expected_value > 0 ? '+' : ''}${data.expected_value.toFixed(4)}</div><div class="label">Expected Value</div></div>
-      <div class="summary-item"><div class="value">${data.risk_level.toUpperCase()}</div><div class="label">Risk Level</div></div>
-      <div class="summary-item"><div class="value">$${data.recommended_stake.toFixed(2)}</div><div class="label">Rec. Stake</div></div>
+// ── Parlay helpers ──
+function renderParlayCard(data, title, badge, color) {
+  color = color || 'var(--accent)';
+  let html = `<div class="parlay-card">
+    <div class="parlay-card-header" style="border-left:3px solid ${color}">
+      <span class="parlay-card-title">${title}</span>
+      <span class="parlay-type-badge" style="background:${color}">${badge}</span>
     </div>`;
-
-    html += '</div>';
-    document.getElementById('content').innerHTML = html;
-  } catch (e) {
-    document.getElementById('content').innerHTML = `<div class="empty"><p>❌ Error: ${e.message}</p></div>`;
-  }
-}
-
-async function loadValueBets() {
-  activeTab = 'value';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="value"]').classList.add('active');
-  showLoading();
-  try {
-    const res = await fetch(`${API}/api/value-bets?target_date=${activeDateStr}`);
-    const data = await res.json();
-    if (!data.length) {
-      document.getElementById('content').innerHTML = '<div class="empty"><p style="font-size:2em">💰</p><p>No value bets found currently. Check back later!</p></div>';
-      return;
-    }
-    let html = '<div class="value-grid">';
-    for (const p of data) {
-      html += `<div class="value-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div>
-            <div style="font-weight:700">${p.sport_emoji} ${p.home_team} vs ${p.away_team}</div>
-            <div style="color:var(--dim);font-size:0.8em;margin-top:3px">
-              🏟️ ${p.tournament} • 📅 ${fmtDate(p.start_date)} • ⏰ ${fmtTime(p.start_time)}
-            </div>
-          </div>
-          <span class="ev-badge">EV: +${p.value_rating.toFixed(3)}</span>
-        </div>
-        <div style="background:rgba(0,229,160,0.05);border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 8px 8px 0;font-weight:600;margin-bottom:8px">
-          ➤ ${p.pick}
-          ${p.american_odds ? '<span style="color:var(--accent);margin-left:8px">' + p.american_odds + '</span>' : ''}
-        </div>
-        <div style="display:flex;gap:12px;color:var(--dim);font-size:0.8em;flex-wrap:wrap">
-          <span>📊 ${p.market_display || p.bet_type}</span>
-          <span>🎯 Conf: <span class="${confClass(p.confidence)}">${p.confidence.toFixed(0)}%</span></span>
-          <span>📈 Our prob: ${(p.probability*100).toFixed(0)}%</span>
-          <span>💰 Implied: ${p.odds > 0 ? (100/p.odds).toFixed(0) : '-'}%</span>
-        </div>
-      </div>`;
-    }
-    html += '</div>';
-    document.getElementById('content').innerHTML = html;
-  } catch (e) {
-    document.getElementById('content').innerHTML = `<div class="empty"><p>❌ Error: ${e.message}</p></div>`;
-  }
-}
-
-// Auto-load on page ready
-window.addEventListener('DOMContentLoaded', () => { loadMatches(); });
-
-// ── Render a generic parlay section ──
-function renderParlaySection(data, title, badge, borderColor) {
-  const parlaSports = new Set(data.legs.map(l => l.sport));
-  const mixLabel = parlaSports.size > 1
-    ? '🌐 Mixed (' + [...parlaSports].map(s => data.legs.find(l => l.sport === s).sport_emoji).join(' ') + ')'
-    : data.legs[0].sport_emoji + ' ' + data.legs[0].sport;
-
-  let html = `<div class="parlay-section" style="border-color:${borderColor}">
-    <div class="parlay-title">
-      ${title}
-      <span class="badge" style="background:${borderColor}">${badge}</span>
-      <span style="font-size:0.65em;color:var(--dim);font-weight:400;margin-left:8px">${mixLabel}</span>
-    </div>`;
-
-  for (let i = 0; i < data.legs.length; i++) {
-    const leg = data.legs[i];
-    const pushHtml = leg.push_note ? `<span class="push-tag" style="margin-left:6px">⚠️ ${leg.push_note}</span>` : '';
-    html += `<div class="parlay-leg">
-      <div class="leg-num" style="background:${borderColor}">${i + 1}</div>
+  data.legs.forEach((leg,i) => {
+    const push = leg.push_note ? `<span style="font-size:0.72em;color:#eab308;margin-left:4px">&#9888; ${leg.push_note}</span>` : '';
+    html += `<div class="parlay-leg-row">
+      <div class="leg-num-circle" style="background:${color}">${i+1}</div>
       <div class="leg-info">
-        <div class="leg-match">${leg.sport_emoji} ${leg.home_team} vs ${leg.away_team}</div>
-        <div class="leg-detail">🏟️ ${leg.tournament} • 📅 ${fmtDate(leg.start_date)} • ⏰ ${fmtTime(leg.start_time)}</div>
+        <div class="leg-match-name">${leg.sport_emoji} ${leg.home_team} vs ${leg.away_team}</div>
+        <div class="leg-detail">${leg.tournament} &bull; ${fmtTime(leg.start_time)}</div>
       </div>
-      <div class="leg-pick">
-        ${leg.pick} ${pushHtml}
-        <span class="odds-sm">${leg.american_odds || (leg.odds > 0 ? leg.odds.toFixed(2) : '')}</span>
-        <span class="conf-tag ${confClass(leg.confidence)}" style="margin-left:6px">${leg.confidence.toFixed(0)}%</span>
+      <div class="leg-pick-right">
+        <div class="leg-pick-name">${leg.pick}${push}</div>
+        <div class="leg-pick-odds">${leg.american_odds||''} <span class="${confClass(leg.confidence)}">${leg.confidence.toFixed(0)}%</span></div>
       </div>
     </div>`;
-  }
-
+  });
   let extras = '';
-  if (data.teaser_points > 0) extras += `<div class="summary-item"><div class="value">+${data.teaser_points}</div><div class="label">Pts Bought</div></div>`;
-  if (data.flex_miss_allowed > 0) extras += `<div class="summary-item"><div class="value">${data.flex_miss_allowed}</div><div class="label">Misses OK</div></div>`;
-
-  html += `<div class="parlay-summary">
-    <div class="summary-item"><div class="value">${data.combined_confidence.toFixed(1)}%</div><div class="label">Combined Conf</div></div>
-    <div class="summary-item"><div class="value">${data.combined_odds.toFixed(2)}x</div><div class="label">Combined Odds</div></div>
-    <div class="summary-item"><div class="value">${data.expected_value > 0 ? '+' : ''}${data.expected_value.toFixed(4)}</div><div class="label">Expected Value</div></div>
-    <div class="summary-item"><div class="value">${data.risk_level.toUpperCase()}</div><div class="label">Risk Level</div></div>
-    <div class="summary-item"><div class="value">$${data.recommended_stake.toFixed(2)}</div><div class="label">Rec. Stake</div></div>
+  if (data.teaser_points>0) extras += `<div class="stat-item"><div class="stat-value">+${data.teaser_points}</div><div class="stat-label">Pts Bought</div></div>`;
+  if (data.flex_miss_allowed>0) extras += `<div class="stat-item"><div class="stat-value">${data.flex_miss_allowed}</div><div class="stat-label">Misses OK</div></div>`;
+  html += `<div class="parlay-stats">
+    <div class="stat-item"><div class="stat-value">${data.combined_confidence.toFixed(1)}%</div><div class="stat-label">Confidence</div></div>
+    <div class="stat-item"><div class="stat-value">${data.combined_odds.toFixed(2)}x</div><div class="stat-label">Odds</div></div>
+    <div class="stat-item"><div class="stat-value">${data.expected_value>0?'+':''}${data.expected_value.toFixed(3)}</div><div class="stat-label">Exp. Value</div></div>
+    <div class="stat-item"><div class="stat-value">${data.risk_level.toUpperCase()}</div><div class="stat-label">Risk</div></div>
+    <div class="stat-item"><div class="stat-value">$${data.recommended_stake.toFixed(2)}</div><div class="stat-label">Stake</div></div>
     ${extras}
   </div></div>`;
   return html;
 }
 
-// ── Same Game Parlays ──
+async function loadParlay() {
+  activeTab='parlay';
+  document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector('[data-tab="parlay"]').classList.add('active');
+  showLoading();
+  const legs = document.getElementById('parlayLegs').value;
+  const strategy = document.getElementById('parlayStrategy').value;
+  const body = {num_legs:parseInt(legs), strategy, target_date:activeDateStr};
+  if (selectedSports.length) body.sports = selectedSports;
+  try {
+    const res = await fetch(`${API}/api/parlay`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const data = await res.json();
+    if (data.detail) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#9888; ${data.detail}</p></div>`; return; }
+    document.getElementById('content').innerHTML = `<div class="parlay-wrap">${renderParlayCard(data, `${data.legs.length}-Leg Parlay`, strategy.toUpperCase())}</div>`;
+  } catch(e) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#10060; ${e.message}</p></div>`; }
+}
+
 async function loadSGPs() {
-  activeTab = 'sgp';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  activeTab='sgp';
+  document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));
   document.querySelector('[data-tab="sgp"]').classList.add('active');
   showLoading();
   try {
     let url = `${API}/api/sgps?num_legs=4&target_date=${activeDateStr}`;
-    if (selectedSports.length > 0) url += `&sport=${selectedSports[0]}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (!data.length) {
-      document.getElementById('content').innerHTML = '<div class="empty"><p style="font-size:2em">🎰</p><p>No SGPs available. Need at least 2 different bet types per game.</p></div>';
-      return;
-    }
-    let html = `<div style="margin-bottom:14px;color:var(--dim);font-size:0.85em">🎰 ${data.length} Same Game Parlays found — combine bets from the SAME game</div>`;
+    if (selectedSports.length) url += `&sport=${selectedSports[0]}`;
+    const res = await fetch(url); const data = await res.json();
+    if (!data.length) { document.getElementById('content').innerHTML='<div class="empty-box"><p style="font-size:2em">&#127920;</p><p>No SGPs available.</p></div>'; return; }
+    let html = `<div class="parlay-wrap"><div style="margin-bottom:12px;color:var(--dim);font-size:0.85em">${data.length} Same Game Parlays</div>`;
     for (const sgp of data) {
-      const match = sgp.legs[0] ? `${sgp.legs[0].home_team} vs ${sgp.legs[0].away_team}` : 'Unknown';
-      html += renderParlaySection(sgp, `🎰 SGP — ${match}`, 'SGP', '#ff6b35');
-    }
-    document.getElementById('content').innerHTML = html;
-  } catch (e) {
-    document.getElementById('content').innerHTML = `<div class="empty"><p>❌ Error: ${e.message}</p></div>`;
-  }
-}
-
-// ── Round Robin ──
-async function loadRoundRobin() {
-  activeTab = 'roundrobin';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="roundrobin"]').classList.add('active');
-  showLoading();
-  try {
-    const body = { num_picks: 5, combo_size: 3, target_date: activeDateStr };
-    if (selectedSports.length > 0) body.sports = selectedSports;
-    const res = await fetch(`${API}/api/round-robin`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    if (data.detail) {
-      document.getElementById('content').innerHTML = `<div class="empty"><p>⚠️ ${data.detail}</p></div>`;
-      return;
-    }
-    let html = `<div style="margin-bottom:14px;color:var(--dim);font-size:0.85em">🔄 ${data.length} Round Robin combos — every possible ${body.combo_size}-leg parlay from your top ${body.num_picks} picks</div>`;
-    for (let i = 0; i < data.length; i++) {
-      html += renderParlaySection(data[i], `🔄 Round Robin #${i+1}`, `${body.combo_size} of ${body.num_picks}`, '#3b82f6');
-    }
-    document.getElementById('content').innerHTML = html;
-  } catch (e) {
-    document.getElementById('content').innerHTML = `<div class="empty"><p>❌ Error: ${e.message}</p></div>`;
-  }
-}
-
-// ── Teaser ──
-async function loadTeaser() {
-  activeTab = 'teaser';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="teaser"]').classList.add('active');
-  showLoading();
-  try {
-    const body = { num_legs: 3, teaser_points: 6.0, target_date: activeDateStr };
-    if (selectedSports.length > 0) body.sports = selectedSports;
-    const res = await fetch(`${API}/api/teaser`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    if (data.detail) {
-      document.getElementById('content').innerHTML = `<div class="empty"><p>⚠️ ${data.detail}</p></div>`;
-      return;
-    }
-    let html = `<div style="margin-bottom:14px;color:var(--dim);font-size:0.85em">🎲 Teaser — Buy +${body.teaser_points} points on spreads & totals. Lower payout, higher win rate!</div>`;
-    html += renderParlaySection(data, `🎲 ${data.legs.length}-Leg Teaser (+${body.teaser_points} pts)`, 'TEASER', '#f59e0b');
-    document.getElementById('content').innerHTML = html;
-  } catch (e) {
-    document.getElementById('content').innerHTML = `<div class="empty"><p>❌ Error: ${e.message}</p></div>`;
-  }
-}
-
-// ── Flex Parlay ──
-async function loadFlexParlay() {
-  activeTab = 'flex';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="flex"]').classList.add('active');
-  showLoading();
-  try {
-    const body = { num_legs: 5, miss_allowed: 1, target_date: activeDateStr };
-    if (selectedSports.length > 0) body.sports = selectedSports;
-    const res = await fetch(`${API}/api/flex-parlay`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    if (data.detail) {
-      document.getElementById('content').innerHTML = `<div class="empty"><p>⚠️ ${data.detail}</p></div>`;
-      return;
-    }
-    let html = `<div style="margin-bottom:14px;color:var(--dim);font-size:0.85em">💪 Flex Parlay — Miss up to ${body.miss_allowed} leg(s) and STILL win! Reduced payout for the insurance.</div>`;
-    html += renderParlaySection(data, `💪 Flex Parlay (${body.miss_allowed} miss allowed)`, 'FLEX', '#10b981');
-    document.getElementById('content').innerHTML = html;
-  } catch (e) {
-    document.getElementById('content').innerHTML = `<div class="empty"><p>❌ Error: ${e.message}</p></div>`;
-  }
-}
-
-// ── Past Games ───────────────────────────────────────────────────────────────
-async function loadPastGames() {
-  activeTab = 'past';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="past"]').classList.add('active');
-  const targetDate = activeDateStr;
-  showLoading();
-  try {
-    let matchData = [];
-    if (selectedSports.length > 0) {
-      const promises = selectedSports.map(s =>
-        fetch(`${API}/api/past-games?target_date=${targetDate}&sport=${s}&min_confidence=50`).then(r => r.json())
-      );
-      const resolved = await Promise.all(promises);
-      resolved.forEach(r => { if (Array.isArray(r)) matchData.push(...r); });
-    } else {
-      const res = await fetch(`${API}/api/past-games?target_date=${targetDate}&min_confidence=50`);
-      const d = await res.json();
-      if (Array.isArray(d)) matchData = d;
-    }
-    const fmtDateLabel = new Date(targetDate + 'T12:00:00Z').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
-    let html = `<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap">
-      <div style="color:var(--dim);font-size:0.9em">📅 <strong style="color:var(--text)">${fmtDateLabel}</strong></div>
-      <div style="color:var(--dim);font-size:0.8em">${matchData.length} match${matchData.length !== 1 ? 'es' : ''} found — use the date navigator above to change date</div>
-    </div>`;
-    if (!matchData.length) {
-      html += '<div class="empty"><p style="font-size:2em">📅</p><p>No games found for this date. Try a different date or sport filter.</p></div>';
-      document.getElementById('content').innerHTML = html;
-      return;
-    }
-    html += '<div class="match-grid">';
-    for (const match of matchData) {
-      const isFinished = match.status === 'finished';
-      const isLive = match.status === 'live';
-      const scoreHtml = isFinished && match.home_score != null
-        ? `<div style="font-size:1.4em;font-weight:700;color:var(--text);letter-spacing:2px">${match.home_score} \u2013 ${match.away_score}</div>`
-        : `<div style="color:var(--dim);font-size:0.8em">${fmtTime(match.start_time)}</div>`;
-      const statusColor = isFinished ? 'var(--dim)' : isLive ? '#ef4444' : 'var(--accent)';
-      const statusLabel = isFinished ? '\u2705 Final' : isLive ? '\ud83d\udd34 LIVE' : '\u23f0 Scheduled';
-      const topPicks = match.predictions.slice(0, 3);
-      html += `<div class="match-card">
-        <div class="match-header">
-          <div>
-            <div class="match-teams">
-              ${match.sport_emoji} <strong>${match.home_team}</strong>
-              <span class="vs">vs</span>
-              <strong>${match.away_team}</strong>
-            </div>
-            <div class="match-meta">
-              <span>\ud83c\udfd9\ufe0f ${match.tournament}</span>
-              <span style="color:${statusColor}">${statusLabel}</span>
-            </div>
-          </div>
-          <div style="text-align:right">
-            ${scoreHtml}
-            <div class="date" style="margin-top:4px">\ud83d\udcc5 ${fmtDate(match.start_date)}</div>
-          </div>
-        </div>
-        <div class="match-markets">
-          <div class="market-group">
-            <div class="market-label"><div class="dot"></div>\ud83c\udfc6 Top Predictions</div>
-            <div class="market-picks">`;
-      for (const p of topPicks) {
-        html += `<div class="pick-chip">
-          <span>${p.pick}</span>
-          <span class="odds-tag">${p.american_odds || p.odds.toFixed(2)}</span>
-          <span class="conf-tag ${confClass(p.confidence)}">${p.confidence.toFixed(0)}%</span>
-        </div>`;
-      }
-      html += `</div></div></div></div>`;
+      const m = sgp.legs[0] ? `${sgp.legs[0].home_team} vs ${sgp.legs[0].away_team}` : '';
+      html += renderParlayCard(sgp, `SGP &mdash; ${m}`, 'SGP', '#ff6b35');
     }
     html += '</div>';
     document.getElementById('content').innerHTML = html;
-  } catch (e) {
-    document.getElementById('content').innerHTML = `<div class="empty"><p>\u274c Error: ${e.message}</p></div>`;
-  }
+  } catch(e) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#10060; ${e.message}</p></div>`; }
 }
+
+async function loadRoundRobin() {
+  activeTab='roundrobin';
+  document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector('[data-tab="roundrobin"]').classList.add('active');
+  showLoading();
+  try {
+    const body = {num_picks:5, combo_size:3, target_date:activeDateStr};
+    if (selectedSports.length) body.sports = selectedSports;
+    const res = await fetch(`${API}/api/round-robin`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const data = await res.json();
+    if (!data.length||data.detail) { document.getElementById('content').innerHTML='<div class="empty-box"><p>Not enough picks for round robin.</p></div>'; return; }
+    let html = `<div class="parlay-wrap"><div style="margin-bottom:12px;color:var(--dim);font-size:0.85em">${data.length} Round Robin combinations</div>`;
+    data.forEach((p,i) => { html += renderParlayCard(p, `Round Robin #${i+1}`, 'RR', '#0ea5e9'); });
+    html += '</div>';
+    document.getElementById('content').innerHTML = html;
+  } catch(e) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#10060; ${e.message}</p></div>`; }
+}
+
+async function loadTeaser() {
+  activeTab='teaser';
+  document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector('[data-tab="teaser"]').classList.add('active');
+  showLoading();
+  try {
+    const body = {num_legs:3, teaser_points:6, target_date:activeDateStr};
+    if (selectedSports.length) body.sports = selectedSports;
+    const res = await fetch(`${API}/api/teaser`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const data = await res.json();
+    if (data.detail) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#9888; ${data.detail}</p></div>`; return; }
+    document.getElementById('content').innerHTML = `<div class="parlay-wrap">${renderParlayCard(data, `Teaser (+${body.teaser_points} pts)`, 'TEASER', '#f59e0b')}</div>`;
+  } catch(e) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#10060; ${e.message}</p></div>`; }
+}
+
+async function loadFlexParlay() {
+  activeTab='flex';
+  document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector('[data-tab="flex"]').classList.add('active');
+  showLoading();
+  try {
+    const body = {num_legs:5, miss_allowed:1, target_date:activeDateStr};
+    if (selectedSports.length) body.sports = selectedSports;
+    const res = await fetch(`${API}/api/flex-parlay`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const data = await res.json();
+    if (data.detail) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#9888; ${data.detail}</p></div>`; return; }
+    document.getElementById('content').innerHTML = `<div class="parlay-wrap">${renderParlayCard(data, `Flex Parlay (miss ${body.miss_allowed})`, 'FLEX', '#22c55e')}</div>`;
+  } catch(e) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#10060; ${e.message}</p></div>`; }
+}
+
+async function loadValueBets() {
+  activeTab='value';
+  document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector('[data-tab="value"]').classList.add('active');
+  showLoading();
+  try {
+    const res = await fetch(`${API}/api/value-bets?target_date=${activeDateStr}`);
+    const data = await res.json();
+    if (!data.length) { document.getElementById('content').innerHTML='<div class="empty-box"><p style="font-size:2em">&#128176;</p><p>No value bets found.</p></div>'; return; }
+    let html = '<div class="value-grid">';
+    for (const p of data) {
+      html += `<div class="value-card">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <div style="font-weight:700">${p.sport_emoji} ${p.home_team} vs ${p.away_team}</div>
+            <div style="color:var(--dim);font-size:0.78em;margin-top:3px">${p.tournament} &bull; ${fmtTime(p.start_time)}</div>
+          </div>
+          <span style="background:rgba(255,215,0,0.12);color:var(--gold);padding:3px 10px;border-radius:6px;font-weight:700;font-size:0.82em">EV +${p.value_rating.toFixed(3)}</span>
+        </div>
+        <div style="background:var(--accent-light);border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 6px 6px 0;font-weight:600;margin-bottom:8px">
+          ${p.pick} ${p.american_odds?`<span style="color:var(--accent);margin-left:8px">${p.american_odds}</span>`:''}
+        </div>
+        <div style="display:flex;gap:12px;color:var(--dim);font-size:0.78em;flex-wrap:wrap">
+          <span>${p.market_display||p.bet_type}</span>
+          <span>Conf: <span class="${confClass(p.confidence)}">${p.confidence.toFixed(0)}%</span></span>
+          <span>Prob: ${(p.probability*100).toFixed(0)}%</span>
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+    document.getElementById('content').innerHTML = html;
+  } catch(e) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#10060; ${e.message}</p></div>`; }
+}
+
+window.addEventListener('DOMContentLoaded', () => loadMatches());
 </script>
 </body>
 </html>"""
