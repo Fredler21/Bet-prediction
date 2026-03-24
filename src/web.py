@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Query, HTTPException
@@ -268,9 +268,20 @@ async def get_matches_grouped(
 
     grouped = agent.group_predictions_by_match(preds)
     results = []
+    now_utc = datetime.now(timezone.utc)
     for match in grouped:
         ev = match["event"]
         sport_obj = match["sport"]
+
+        # Skip finished / cancelled matches
+        if ev.status.value in ("finished", "cancelled"):
+            continue
+        # Skip matches that kicked off more than 105 min ago (game is likely over)
+        if ev.status.value == "not_started":
+            game_start = ev.start_time if ev.start_time.tzinfo else ev.start_time.replace(tzinfo=timezone.utc)
+            if game_start < now_utc - timedelta(minutes=105):
+                continue
+
         results.append(MatchGroupResponse(
             match_id=ev.id,
             home_team=ev.home_team.name,
