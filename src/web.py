@@ -638,6 +638,42 @@ body {
 }
 
 /* ─────────────────────────────────────────────
+   LEAGUE FILTER BAR
+───────────────────────────────────────────── */
+.league-bar {
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding:8px 20px;
+  display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+  min-height:40px;
+}
+.league-bar.hidden { display:none; }
+.league-chip {
+  padding:4px 11px; border-radius:20px;
+  font-size:11px; font-weight:600;
+  cursor:pointer;
+  border:1px solid var(--border2);
+  color:var(--dim2); background:transparent;
+  transition:all 0.15s; white-space:nowrap; max-width:200px;
+  overflow:hidden; text-overflow:ellipsis;
+}
+.league-chip:hover { border-color:var(--gold); color:var(--text); }
+.league-chip.active {
+  background:var(--gold-dim); border-color:var(--gold);
+  color:var(--gold);
+  box-shadow:0 0 8px rgba(251,191,36,0.2);
+}
+.league-search {
+  padding:4px 10px; border-radius:20px;
+  border:1px solid var(--border2);
+  background:var(--card); color:var(--text);
+  font-size:11px; font-family:inherit; width:140px;
+  transition:border-color 0.15s;
+}
+.league-search:focus { border-color:var(--gold); outline:none; }
+.league-search::placeholder { color:var(--dim); }
+
+/* ─────────────────────────────────────────────
    MAIN TABS
 ───────────────────────────────────────────── */
 .main-tabs {
@@ -1054,6 +1090,13 @@ footer {
   <div class="sport-chip" data-sport="ice-hockey" onclick="toggleSport(this)">&#127954; Hockey</div>
 </div>
 
+<!-- ── League filter ── -->
+<div class="league-bar hidden" id="leagueBar">
+  <span class="filter-label">LEAGUE</span>
+  <input class="league-search" id="leagueSearch" type="text" placeholder="&#128269; Search league..." oninput="filterLeagueChips(this.value)">
+  <div id="leagueChips" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+</div>
+
 <!-- ── Main tabs ── -->
 <div class="main-tabs">
   <button class="main-tab active" data-tab="matches" onclick="switchMain(this,'matches')">Matches</button>
@@ -1104,6 +1147,8 @@ let selectedSports = [];
 let activeTab = 'matches';
 let activeDateStr = '';
 let innerTabState = {};
+let selectedLeague = ''; // '' = all leagues
+let _allMatchData = [];  // cache for client-side league filtering
 
 function localDateStr() {
   const n = new Date();
@@ -1160,7 +1205,67 @@ function toggleSport(el) {
     selectedSports = [...document.querySelectorAll('.sport-chip.active')].map(c=>c.dataset.sport).filter(Boolean);
     if (!selectedSports.length) document.querySelector('.sport-chip[data-sport=""]').classList.add('active');
   }
+  selectedLeague = ''; // reset league filter when sport changes
   reloadActive();
+}
+
+// ── League filter helpers ────────────────────────────────────────────────
+function buildLeagueBar(matchData) {
+  const bar = document.getElementById('leagueBar');
+  const chips = document.getElementById('leagueChips');
+  if (!bar || !chips) return;
+
+  // Collect unique tournaments sorted by count
+  const counts = {};
+  matchData.forEach(m => { counts[m.tournament] = (counts[m.tournament]||0) + 1; });
+  const leagues = Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([t])=>t);
+
+  if (leagues.length <= 1) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+
+  chips.innerHTML = leagues.map(l => {
+    const active = selectedLeague === l ? ' active' : '';
+    return `<div class="league-chip${active}" data-league="${l.replace(/"/g,'&quot;')}" onclick="toggleLeague(this)" title="${l}">${l}</div>`;
+  }).join('');
+}
+
+function toggleLeague(el) {
+  const l = el.dataset.league;
+  if (selectedLeague === l) {
+    selectedLeague = '';
+    document.querySelectorAll('.league-chip').forEach(c => c.classList.remove('active'));
+  } else {
+    selectedLeague = l;
+    document.querySelectorAll('.league-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  }
+  renderFilteredMatches();
+}
+
+function filterLeagueChips(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.league-chip').forEach(c => {
+    c.style.display = c.dataset.league.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function renderFilteredMatches() {
+  const data = selectedLeague
+    ? _allMatchData.filter(m => m.tournament === selectedLeague)
+    : _allMatchData;
+  const tdate = activeDateStr;
+  const isPast = tdate < localDateStr();
+  const totalPreds = data.reduce((s,m)=>s+m.predictions.length,0);
+  const leagueLabel = selectedLeague ? ` &bull; <span style="color:var(--gold)">${selectedLeague}</span>` : '';
+  const info = `<div style="padding:10px 20px;font-size:0.8em;color:var(--dim2);border-bottom:1px solid var(--border);background:var(--card2)">
+    ${data.length} matches${!isPast?' &bull; '+totalPreds+' total predictions':''}${leagueLabel} &mdash; ${dateLabelOf(tdate)}
+  </div>`;
+  if (!data.length) {
+    document.getElementById('content').innerHTML = info + '<div class="empty-box"><p>No matches in this league for the selected date.</p></div>';
+    return;
+  }
+  const cards = data.map(m => renderMatchCard(m)).join('');
+  document.getElementById('content').innerHTML = info + '<div class="match-grid">' + cards + '</div>';
 }
 function switchMain(el, tab) {
   document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));
@@ -1376,14 +1481,16 @@ async function loadMatches() {
     }
     if (!matchData.length) {
       document.getElementById('content').innerHTML = '<div class="empty-box"><p style="font-size:2em">&#128269;</p><p>No matches found. Try a different date or sport.</p></div>';
+      document.getElementById('leagueBar').classList.add('hidden');
       return;
     }
-    const totalPreds = matchData.reduce((s,m)=>s+m.predictions.length,0);
-    const info = `<div style="padding:10px 20px;font-size:0.8em;color:var(--dim2);border-bottom:1px solid var(--border);background:var(--card2)">
-      ${matchData.length} matches${!isPast?' &bull; '+totalPreds+' total predictions':''} &mdash; ${dateLabelOf(tdate)}
-    </div>`;
-    const cards = matchData.map(m => renderMatchCard(m)).join('');
-    document.getElementById('content').innerHTML = info + '<div class="match-grid">' + cards + '</div>';
+    // Sort by start_time ascending
+    matchData.sort((a,b) => new Date(a.start_time) - new Date(b.start_time));
+    _allMatchData = matchData;
+    // Reset league selection if it no longer exists in new data
+    if (selectedLeague && !matchData.some(m => m.tournament === selectedLeague)) selectedLeague = '';
+    buildLeagueBar(matchData);
+    renderFilteredMatches();
   } catch(e) {
     document.getElementById('content').innerHTML = `<div class="empty-box"><p>&#10060; ${e.message}</p></div>`;
   }
