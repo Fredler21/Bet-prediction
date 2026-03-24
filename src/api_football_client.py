@@ -173,29 +173,17 @@ class APIFootballClient:
         return await self._fallback.get_scheduled_events(sport, d)
 
     async def _fetch_af_fixtures(self, d: date) -> list[MatchEvent]:
-        """Fetch all real fixtures for a date.
-
-        Priority: tracked top-league games first. If none are found (e.g.
-        during international breaks) we fall back to ALL leagues returned
-        by the API so the app always shows real games instead of demo data.
-        """
+        """Fetch ALL fixtures for a date — no league filtering."""
         data = await self._af_get("fixtures", {"date": d.isoformat(), "timezone": "America/New_York"})
-        events_top: list[MatchEvent] = []
-        events_all: list[MatchEvent] = []
+        events: list[MatchEvent] = []
         for f in data.get("response", []):
             try:
-                events_all.append(self._parse_af_fixture(f))
-                lid = f.get("league", {}).get("id", 0)
-                if lid in _AF_LEAGUES:
-                    events_top.append(events_all[-1])
+                events.append(self._parse_af_fixture(f))
             except Exception as e:
                 logger.warning(f"Skipping AF fixture: {e}")
-        if events_top:
-            return events_top
-        # No top-league games today (e.g. international break) — use all real games
-        if events_all:
-            logger.info(f"No top-league fixtures today, using all {len(events_all)} real API fixtures")
-        return events_all
+        if events:
+            logger.info(f"API-Football: {len(events)} fixtures for {d}")
+        return events
 
     def _parse_af_fixture(self, f: dict) -> MatchEvent:
         fix    = f.get("fixture", {})
