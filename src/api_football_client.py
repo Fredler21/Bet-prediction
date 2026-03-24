@@ -37,12 +37,38 @@ _AF_KEY = os.getenv("API_FOOTBALL_KEY", "")
 
 # Map API-Football league IDs → (display name, country, our tid, priority)
 _AF_LEAGUES: dict[int, tuple[str, str, int, int]] = {
-    39:  ("Premier League",   "England", 17,  500),
-    140: ("La Liga",          "Spain",   8,   480),
-    135: ("Serie A",          "Italy",   23,  460),
-    78:  ("Bundesliga",       "Germany", 35,  450),
-    61:  ("Ligue 1",          "France",  34,  440),
-    2:   ("Champions League", "Europe",  7,   520),
+    # ── Top 5 + UEFA ──────────────────────────────────────────────────────
+    2:   ("Champions League",        "Europe",      7,   520),
+    3:   ("Europa League",           "Europe",      6,   510),
+    848: ("Conference League",       "Europe",      848, 490),
+    39:  ("Premier League",          "England",     17,  500),
+    40:  ("Championship",            "England",     40,  300),
+    45:  ("FA Cup",                  "England",     45,  280),
+    140: ("La Liga",                 "Spain",       8,   480),
+    143: ("Copa del Rey",            "Spain",       143, 270),
+    135: ("Serie A",                 "Italy",       23,  460),
+    136: ("Serie B",                 "Italy",       136, 240),
+    78:  ("Bundesliga",              "Germany",     35,  450),
+    79:  ("2. Bundesliga",           "Germany",     79,  260),
+    61:  ("Ligue 1",                 "France",      34,  440),
+    # ── Other top European ────────────────────────────────────────────────
+    88:  ("Eredivisie",              "Netherlands", 88,  360),
+    94:  ("Primeira Liga",           "Portugal",    94,  350),
+    203: ("Süper Lig",               "Turkey",      203, 330),
+    179: ("Scottish Premiership",    "Scotland",    179, 290),
+    207: ("Swiss Super League",      "Switzerland", 207, 250),
+    # ── Americas ──────────────────────────────────────────────────────────
+    253: ("MLS",                     "USA",         253, 430),
+    262: ("Liga MX",                 "Mexico",      262, 420),
+    71:  ("Serie A",                 "Brazil",      71,  400),
+    128: ("Primera Division",        "Argentina",   128, 390),
+    13:  ("Copa Libertadores",       "South America", 13, 410),
+    # ── International / Qualifiers ────────────────────────────────────────
+    5:   ("UEFA Nations League",     "Europe",      5,   380),
+    4:   ("Euro Qualification",      "Europe",      4,   370),
+    32:  ("World Cup - Qual. UEFA",  "Europe",      32,  365),
+    9:   ("World Cup - Qual. CONMEBOL", "South America", 9, 355),
+    29:  ("World Cup - Qual. CONCACAF", "North America", 29, 345),
 }
 
 _STATUS_MAP: dict[str, MatchStatus] = {
@@ -147,18 +173,29 @@ class APIFootballClient:
         return await self._fallback.get_scheduled_events(sport, d)
 
     async def _fetch_af_fixtures(self, d: date) -> list[MatchEvent]:
-        """Fetch all tracked-league fixtures for a date — single API call."""
-        data = await self._af_get("fixtures", {"date": d.isoformat(), "timezone": "UTC"})
-        events: list[MatchEvent] = []
+        """Fetch all real fixtures for a date.
+
+        Priority: tracked top-league games first. If none are found (e.g.
+        during international breaks) we fall back to ALL leagues returned
+        by the API so the app always shows real games instead of demo data.
+        """
+        data = await self._af_get("fixtures", {"date": d.isoformat(), "timezone": "America/New_York"})
+        events_top: list[MatchEvent] = []
+        events_all: list[MatchEvent] = []
         for f in data.get("response", []):
-            lid = f.get("league", {}).get("id", 0)
-            if lid not in _AF_LEAGUES:
-                continue
             try:
-                events.append(self._parse_af_fixture(f))
+                events_all.append(self._parse_af_fixture(f))
+                lid = f.get("league", {}).get("id", 0)
+                if lid in _AF_LEAGUES:
+                    events_top.append(events_all[-1])
             except Exception as e:
                 logger.warning(f"Skipping AF fixture: {e}")
-        return events
+        if events_top:
+            return events_top
+        # No top-league games today (e.g. international break) — use all real games
+        if events_all:
+            logger.info(f"No top-league fixtures today, using all {len(events_all)} real API fixtures")
+        return events_all
 
     def _parse_af_fixture(self, f: dict) -> MatchEvent:
         fix    = f.get("fixture", {})
@@ -168,11 +205,15 @@ class APIFootballClient:
 
         lid = league.get("id", 0)
         name, country, tid, priority = _AF_LEAGUES.get(lid, (
-            league.get("name", ""), league.get("country", ""), lid, 100,
+            league.get("name", "Unknown League"),
+            league.get("country", ""),
+            lid,
+            50,  # low priority for untracked leagues
         ))
 
         status = _STATUS_MAP.get(fix.get("status", {}).get("short", "NS"), MatchStatus.NOT_STARTED)
         ts = fix.get("timestamp", 0)
+        # Store as UTC so the frontend can convert to any local timezone
         start_time = datetime.fromtimestamp(ts, tz=timezone.utc) if ts else datetime.now(timezone.utc)
 
         is_active = status in (MatchStatus.FINISHED, MatchStatus.LIVE)

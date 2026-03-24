@@ -1122,12 +1122,12 @@ function shiftDate(d) { setNavDate(offsetDate(activeDateStr, d)); }
 function fmtTime(s) {
   if (!s) return '';
   const d = new Date(s); if (isNaN(d)) return s;
-  return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+  return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'America/New_York'});
 }
 function fmtDate(s) {
   if (!s) return '';
   const d = new Date(s); if (isNaN(d)) return s;
-  return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'});
 }
 
 // Live clock
