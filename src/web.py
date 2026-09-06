@@ -1151,17 +1151,12 @@ footer {
   <button class="date-nav-btn" onclick="shiftDate(2)">+2d &#187;</button>
 </div>
 
-<!-- ── Sport chips ── -->
+<!-- ── Sport chips (built from /api/sports so dead sports never appear) ── -->
 <div class="filter-bar">
   <span class="filter-label">SPORT</span>
-  <div class="sport-chip active" data-sport="" onclick="toggleSport(this)">&#127758; All</div>
-  <div class="sport-chip" data-sport="football" onclick="toggleSport(this)">&#9917; Soccer</div>
-  <div class="sport-chip" data-sport="basketball" onclick="toggleSport(this)">&#127936; Basketball</div>
-  <div class="sport-chip" data-sport="tennis" onclick="toggleSport(this)">&#127934; Tennis</div>
-  <div class="sport-chip" data-sport="baseball" onclick="toggleSport(this)">&#9918; Baseball</div>
-  <div class="sport-chip" data-sport="american-football" onclick="toggleSport(this)">&#127944; Football</div>
-  <div class="sport-chip" data-sport="volleyball" onclick="toggleSport(this)">&#127952; Volleyball</div>
-  <div class="sport-chip" data-sport="ice-hockey" onclick="toggleSport(this)">&#127954; Hockey</div>
+  <div id="sportChips" style="display:flex;gap:6px;flex-wrap:wrap;">
+    <div class="sport-chip active" data-sport="" onclick="toggleSport(this)">&#127758; All</div>
+  </div>
 </div>
 
 <!-- ── League filter ── -->
@@ -1268,16 +1263,59 @@ setInterval(() => {
 
 setNavDate(localDateStr(), false);
 
+// Friendly labels. "Soccer" and "American Football" are spelled out because
+// the API slug for soccer is literally "football", and the two chips sitting
+// next to each other reading "Soccer" and "Football" is a coin flip for the
+// reader.
+const SPORT_LABELS = {
+  'football': 'Soccer',
+  'american-football': 'American Football',
+  'basketball': 'Basketball',
+  'baseball': 'Baseball',
+  'ice-hockey': 'Hockey',
+  'tennis': 'Tennis',
+  'volleyball': 'Volleyball',
+  'mma': 'MMA',
+  'handball': 'Handball',
+  'rugby': 'Rugby',
+};
+
+async function buildSportChips() {
+  const box = document.getElementById('sportChips');
+  if (!box) return;
+  try {
+    const sports = await (await fetch(`${API}/api/sports`)).json();
+    if (!Array.isArray(sports) || !sports.length) return;
+    box.innerHTML =
+      `<div class="sport-chip active" data-sport="" onclick="toggleSport(this)">&#127758; All</div>`
+      + sports.map(s => {
+          const label = SPORT_LABELS[s.slug] || s.name;
+          const n = s.leagues ? ` title="${s.leagues} leagues"` : '';
+          return `<div class="sport-chip" data-sport="${s.slug}" onclick="toggleSport(this)"${n}>${s.emoji} ${label}</div>`;
+        }).join('');
+  } catch (e) {
+    // Leave the "All" chip in place; the board still works unfiltered.
+  }
+}
+
 function toggleSport(el) {
   const s = el.dataset.sport;
-  if (s === '') {
-    document.querySelectorAll('.sport-chip').forEach(c=>c.classList.remove('active'));
-    el.classList.add('active'); selectedSports = [];
+  // Single-select: clicking a sport switches to it rather than adding it.
+  //
+  // These chips used to toggle independently, so clicking "Soccer" while
+  // "Football" was already on left both active and American football stayed
+  // on the board — which reads as the filter being broken. Clicking the
+  // active sport again clears back to All.
+  const alreadyActive = el.classList.contains('active');
+  document.querySelectorAll('.sport-chip').forEach(c => c.classList.remove('active'));
+
+  if (s === '' || alreadyActive) {
+    const all = document.querySelector('.sport-chip[data-sport=""]');
+    if (all) all.classList.add('active');
+    selectedSports = [];
   } else {
-    document.querySelector('.sport-chip[data-sport=""]').classList.remove('active');
-    el.classList.toggle('active');
-    selectedSports = [...document.querySelectorAll('.sport-chip.active')].map(c=>c.dataset.sport).filter(Boolean);
-    if (!selectedSports.length) document.querySelector('.sport-chip[data-sport=""]').classList.add('active');
+    el.classList.add('active');
+    selectedSports = [s];
   }
   selectedLeague = ''; // reset league filter when sport changes
   reloadActive();
@@ -1760,7 +1798,10 @@ async function loadValueBets() {
   } catch(e) { document.getElementById('content').innerHTML=`<div class="empty-box"><p>&#10060; ${e.message}</p></div>`; }
 }
 
-window.addEventListener('DOMContentLoaded', () => loadMatches());
+window.addEventListener('DOMContentLoaded', () => {
+  buildSportChips();
+  loadMatches();
+});
 </script>
 </body>
 </html>"""
