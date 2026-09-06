@@ -61,6 +61,20 @@ class BetType(str, Enum):
     QUARTER_PROPS = "quarter_props"             # Quarter/period totals & results
     RACE_TO = "race_to"                         # Race to X points/goals
     FUTURES = "futures"                         # Season-long: championship, MVP, etc.
+    # ── Markets read off the score-grid model ──
+    ASIAN_HANDICAP = "asian_handicap"           # Quarter/half-goal handicaps
+    WINNING_MARGIN = "winning_margin"           # Margin bands (by 1, by 2, 3+)
+    HT_FT = "ht_ft"                             # Half-time / full-time double
+    CLEAN_SHEET = "clean_sheet"                 # Team concedes nothing
+    WIN_TO_NIL = "win_to_nil"                   # Win without conceding
+    EXACT_TOTAL = "exact_total"                 # Exact number of goals/points
+    BOTH_HALVES_OVER = "both_halves_over"       # Over the line in each half
+    RESULT_TOTAL = "result_total"               # Result + over/under combo
+    RESULT_BTTS = "result_btts"                 # Result + both teams to score
+    THREE_WAY = "three_way"                     # Regulation 1X2 (hockey)
+    FIRST_5_INNINGS = "first_5_innings"         # Baseball F5 result/total
+    PERIOD_RESULT = "period_result"             # Winner of a quarter/period
+    ANYTIME_SCORER = "anytime_scorer"           # Player to score at any time
 
 
 class MatchStatus(str, Enum):
@@ -199,6 +213,21 @@ class MatchEvent:
     # ESPN enrichment data (spread, O/U, records)
     espn_data: dict = field(default_factory=dict)
 
+    # ── Provenance ──
+    # Where the numbers behind this event came from, so nothing generated is
+    # ever shown as though it were measured.
+    #   "live"    — fixture and team stats both from a real feed
+    #   "partial" — real fixture, but some stats could not be sourced
+    #   "sample"  — demo/sample data, for local development only
+    data_source: str = "live"
+    data_notes: list[str] = field(default_factory=list)
+    # True only when a bookmaker price was actually retrieved for this game.
+    has_book_odds: bool = False
+
+    @property
+    def is_sample_data(self) -> bool:
+        return self.data_source == "sample"
+
 
 # ── Prediction Models ────────────────────────────────────────────────────────
 
@@ -220,6 +249,15 @@ class Prediction:
     market_display: str = ""              # Full formatted market string
     team_name: str = ""                   # Specific team name for team markets
     push_note: str = ""                   # e.g., "Push if tied"
+    # "book"  — a real bookmaker price was available for this market
+    # "model" — our own fair price, shown so the market can be compared;
+    #           it is NOT an offer and value_rating stays 0 against it
+    price_source: str = "model"
+    push_probability: float = 0.0         # Chance the bet pushes (whole lines)
+
+    @property
+    def data_source(self) -> str:
+        return self.event.data_source
 
 
 @dataclass

@@ -294,15 +294,21 @@ class APIFootballClient:
         if not isinstance(odds_data, Exception) and odds_data:
             self._apply_af_odds(event, odds_data)
 
-        # If standings call had no data for these teams, fill in with demo stats
+        # If standings had nothing for these teams, record that instead of
+        # filling the gap with generated statistics — the old behaviour, which
+        # produced a confident-looking projection built on random numbers.
         if event.home_stats is None or event.away_stats is None:
-            enriched = self._demo.enrich_event(event)
-            if event.home_stats is None:
-                event.home_stats = enriched.home_stats
-            if event.away_stats is None:
-                event.away_stats = enriched.away_stats
-            if event.h2h is None:
-                event.h2h = enriched.h2h
+            missing = [
+                name for name, stats in (
+                    (event.home_team.name, event.home_stats),
+                    (event.away_team.name, event.away_stats),
+                ) if stats is None
+            ]
+            event.data_source = "partial"
+            event.data_notes.append(
+                "No league table entry for " + " and ".join(missing)
+                + " — this fixture cannot be projected."
+            )
 
         return event
 

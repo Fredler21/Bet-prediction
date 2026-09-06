@@ -388,6 +388,13 @@ Provide a brief expert analysis (3-4 sentences) covering:
 
     # ── Value Bets ───────────────────────────────────────────────────────
 
+    # Above this expected value, the gap is telling us about our own data
+    # rather than about the market. A closing line is the best public
+    # predictor of a result there is; a genuine 30%+ edge against one does
+    # not sit around unclaimed. These are reported separately as data-quality
+    # flags rather than mixed in with the plausible ones.
+    IMPLAUSIBLE_EV = 0.30
+
     async def find_value_bets(
         self,
         sports: Optional[list[Sport]] = None,
@@ -398,15 +405,24 @@ Provide a brief expert analysis (3-4 sentences) covering:
         Find value bets where our estimated probability exceeds
         the implied probability from bookmaker odds.
 
-        A value bet has positive expected value.
+        Only markets carrying a real bookmaker price are considered. This
+        used to scan every market, and because almost all of them were priced
+        at 1/probability — our own fair price — the comparison was the model
+        against itself, so anything that surfaced was a rounding artefact.
+
+        Absurd edges are also dropped. Ranking a claimed +115% edge at the top
+        of the list presents a data problem as the best bet on the board.
         """
         all_preds = await self.get_todays_predictions(sports, target_date)
         value_bets = []
 
         for sport_preds in all_preds.values():
             for pred in sport_preds:
-                if pred.value_rating >= min_value:
-                    value_bets.append(pred)
+                if getattr(pred, "price_source", "model") != "book":
+                    continue
+                if not (min_value <= pred.value_rating <= self.IMPLAUSIBLE_EV):
+                    continue
+                value_bets.append(pred)
 
         value_bets.sort(key=lambda p: p.value_rating, reverse=True)
         return value_bets

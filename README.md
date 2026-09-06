@@ -1,190 +1,206 @@
-# 🏆 Premium Bet Prediction AI Agent
+# 🏆 Bet Prediction
 
-AI-powered sports betting prediction system that pulls real-time data from SofaScore, runs multi-factor statistical analysis, and uses LLM reasoning to generate premium predictions, parlays, and value bets.
+Multi-sport betting model. Pulls real fixtures, standings and results from
+ESPN's public API, builds one probability model per game, and reads a full
+board of markets off it.
 
-## Features
-
-### 🔬 Data & Analysis
-- **Live SofaScore Integration** — pulls schedules, team stats, H2H records, standings, lineups, injuries, and odds
-- **Multi-Factor Statistical Model** — 8 weighted factors: form, home advantage, H2H, league position, scoring patterns, injuries, consistency, momentum
-- **Sport-Specific Weights** — each sport has tuned factor weights (e.g., H2H matters more in tennis, home advantage matters more in soccer)
-- **Poisson Scoring Model** — over/under predictions using Poisson distribution analysis
-- **Value Bet Detection** — compares our estimated probability vs bookmaker implied probability to find +EV bets
-
-### 🎯 Bet Types (like Hardwork Bet / DraftKings / FanDuel)
-- **Moneyline / 1X2** — who wins
-- **Spread / Handicap** — point spread betting
-- **Over/Under (Totals)** — total goals/points
-- **Both Teams to Score (BTTS)** — soccer specialty
-- **Double Chance** — 1X, X2, 12
-- **Parlay Builder** — multi-leg combination bets with optimizer
-
-### 🏟️ Sports Covered
-| Sport | Key Metrics |
-|-------|-----------|
-| ⚽ Soccer | Form, H2H, BTTS, O/U 2.5, possession, clean sheets |
-| 🏀 Basketball | Scoring averages, pace, home court, point spread |
-| 🎾 Tennis | H2H (heavily weighted), surface, recent form, injuries |
-| ⚾ Baseball | Pitcher matchups, run lines, O/U 7.5 |
-| 🏈 American Football | Spread, O/U 45.5, home field, injury report |
-| 🏐 Volleyball | Set totals, form, home advantage |
-| 🏒 Hockey | Puck line, O/U, goalie stats |
-| 🥊 MMA | Fighter stats, reach, recent form |
-
-### 💰 Bankroll Management
-- **Kelly Criterion** — calculates mathematically optimal bet sizing
-- **Fractional Kelly** — conservative version (25% Kelly by default)
-- **Risk Assessment** — low/medium/high rating for every bet
-
-### 🤖 AI Enhancement (Optional)
-- **GPT-4o Analysis** — validates picks with LLM reasoning
-- **Hidden Factor Detection** — identifies motivation, derbies, scheduling edges
-- **Parlay Review** — AI reviews and critiques parlay selections
-
-### 📊 Accuracy Tracking
-- SQLite database logs every prediction
-- Tracks win/loss record and ROI over time
-- Per-sport accuracy breakdown
+**Informational only. Bet responsibly.**
 
 ---
 
-## Quick Start
+## What it does
 
-### 1. Install Dependencies
+For every fixture it can source real data for, it builds a single
+distribution over the final scoreline and derives ~120 markets across 26 bet
+types from that one model — so the moneyline, the handicap, the total and the
+correct-score board always agree with each other.
+
+Where a real bookmaker price is available it is shown and used to compute
+expected value. Where one is not, the price shown is the model's own fair
+price, **labelled `MODEL`**, and no value is claimed against it.
+
+## Data sources
+
+| What | Source | Notes |
+|------|--------|-------|
+| Fixtures | ESPN public API | 35 league feeds, no key required |
+| Standings (W/D/L, goals for & against, table position) | ESPN | anchors the scoring model |
+| Form, home/away splits, head-to-head | ESPN team schedules | real completed results |
+| Rosters (player markets) | ESPN team rosters | real names and positions |
+| Moneyline / spread / total prices | DraftKings via ESPN | when the feed carries them |
+| Soccer (optional) | API-Football v3 | set `API_FOOTBALL_KEY` |
+
+SofaScore support remains in the code, but its API rejects server-side
+requests; it is used only if you supply `SOFASCORE_PROXY_KEY`.
+
+### Leagues covered
+
+**Soccer (24)** — Champions League, Europa League, Conference League, Premier
+League, La Liga, Serie A, Bundesliga, Ligue 1, MLS, Liga MX, Copa
+Libertadores, Brasileirão, Liga Profesional, Nations League, World Cup
+Qualifying (UEFA), Eredivisie, Primeira Liga, Saudi Pro League, Süper Lig,
+Championship, Scottish Premiership, FA Cup, Carabao Cup, Copa del Rey
+
+**Basketball (5)** — NBA, WNBA, NCAA M, NCAA W, G League
+**Football (2)** — NFL, NCAA
+**Baseball (2)** — MLB, NCAA
+**Hockey (2)** — NHL, NCAA M
+
+Sports with no feed wired up (tennis, volleyball, MMA, handball, rugby) are
+not advertised in the UI, rather than shown as permanently empty tabs.
+
+---
+
+## The model
+
+Scoring rates come from the attack/defence method: a team's scoring measured
+against its league's average, combined with the opponent's defensive record.
+Two different forms, because the sports behave differently:
+
+- **Low-scoring (soccer, hockey, baseball)** — ratio strengths feeding a
+  **Poisson score grid**: the joint distribution over every plausible
+  scoreline. Every market is a sum over cells of that grid.
+- **High-scoring (basketball, American football)** — each offence paired with
+  the defence it faces and averaged, feeding a **normal model** of margin and
+  total. Poisson fits these badly, and multiplying strength ratios compounds
+  badly once scoring is in the tens or hundreds.
+
+An eight-factor analysis (form, home advantage, H2H, table position, scoring,
+injuries, consistency, momentum) applies a **bounded ±15% adjustment** to each
+side's projected scoring. It is not normalised into a probability directly.
+
+Sanity checks against known long-run rates:
+
+| Check | Model | Reality |
+|-------|-------|---------|
+| League-average soccer match, 1X2 | 44.5 / 24.2 / 31.3 | ≈ 45 / 25 / 30 |
+| NHL game total | 6.14 | ≈ 6.1 |
+| MLB game total | 8.84 | ≈ 8.8 |
+| NFL total vs a posted DraftKings line | 50.2 | 50.5 |
+
+## Bet types
+
+**Result** — moneyline / 1X2, double chance, draw no bet, 3-way regulation
+(hockey), half & period winner
+**Handicap** — main spread, alternate spreads, Asian (quarter) handicaps
+**Totals** — main total, alternate totals, team totals, exact total, odd/even
+**Soccer specials** — both teams to score, clean sheet, win to nil, correct
+score, winning margin, first to score (including the goalless case)
+**Halves & periods** — half-time result, half-time totals, half-time /
+full-time double, both halves over, highest-scoring half, quarter totals
+**Combinations** — result + total, result + both teams to score
+**Baseball** — first five innings result and total
+**Player** — anytime goalscorer, player points
+**Game props** — overtime / extra innings, race to X
+
+**Parlays** — standard, same-game (correlation-adjusted, contradictory legs
+removed), round robin (per-ticket staking), teaser (lines actually moved and
+re-priced from the model), flex (exact Poisson-binomial for at-most-k misses).
+
+---
+
+## Data integrity
+
+The model reports only what it can source.
+
+- **No generated fixtures.** If no real fixture exists for a sport and date,
+  the answer is an empty list. Sample data is available for local development
+  behind `ENABLE_SAMPLE_DATA=1`, and anything it produces is labelled
+  `SAMPLE DATA` in the API and on the page.
+- **Every price is labelled.** `BOOK` means a real bookmaker price. `MODEL`
+  means our own fair price, and expected value against it is reported as
+  zero, because scoring the model against its own number proves nothing.
+- **Missing inputs are stated, not filled in.** No head-to-head record, no
+  league table entry, form carried over from last season — each is surfaced
+  as a note on the match instead of being substituted with a
+  plausible-looking number.
+- **Implausible edges are flagged, not sold.** A closing line is the best
+  public predictor of a result there is. Where the model disagrees with one
+  by more than 15 percentage points, the reasoning says the likely
+  explanation is thin inputs on our side; disagreements above 30% are kept
+  out of the value list entirely.
+- **Markets nobody could bet are not shown.** Anything outside a 6–94%
+  probability band is skipped, and prices are capped near -1900.
+
+---
+
+## Quick start
+
 ```bash
-cd /workspaces/Bet-prediction
 pip install -r requirements.txt
+cp .env.example .env        # optional: OPENAI_API_KEY, API_FOOTBALL_KEY
+
+python main.py              # web dashboard on http://localhost:8000
+python main.py cli          # terminal UI
+python main.py parlay 6     # 6-leg parlay
+python main.py report       # daily text report
 ```
 
-### 2. Configure
-```bash
-cp .env.example .env
-# Edit .env and add your OpenAI API key (optional — works without it)
-```
+No API key is needed — ESPN's public endpoints require none.
 
-### 3. Run
+### One deployment note
 
-**Web Dashboard** (recommended):
-```bash
-python main.py
-# Open http://localhost:8000 in your browser
-```
-
-**CLI Interface**:
-```bash
-python main.py cli
-```
-
-**Quick Parlay**:
-```bash
-python main.py parlay 6    # Build 6-leg parlay
-```
-
-**Daily Report**:
-```bash
-python main.py report
-```
-
----
+ESPN answers **403** to requests carrying a spoofed desktop-browser
+`User-Agent`. Requests must go out with a plain client identifier
+(`_ESPN_HEADERS` in `src/sofascore_client.py`). This is not cosmetic: it was
+the cause of the live site serving invented fixtures, because every ESPN call
+failed and the code then silently fell back to a fixture generator.
 
 ## Architecture
 
 ```
-Bet-prediction/
-├── main.py                  # Entry point (web/cli/report/parlay)
-├── requirements.txt
-├── .env.example
-├── src/
-│   ├── config.py            # Settings & environment
-│   ├── models.py            # Data models (Sport, Team, Event, Prediction, etc.)
-│   ├── sofascore_client.py  # SofaScore API client (async, cached, retries)
-│   ├── analyzer.py          # Statistical analysis engine (8-factor model)
-│   ├── parlay_optimizer.py  # Parlay builder + Kelly Criterion bankroll
-│   ├── agent.py             # AI Prediction Agent (orchestrator)
-│   ├── database.py          # SQLite tracking for accuracy monitoring
-│   ├── cli.py               # Rich terminal UI
-│   └── web.py               # FastAPI REST API + web dashboard
-└── data/                    # SQLite DB (auto-created)
+main.py                    entry point (web/cli/report/parlay)
+api/index.py               Vercel handler
+src/
+  markets.py               probability engine: score grid, normal model, pricing
+  analyzer.py              market generation + eight-factor analysis
+  espn_stats.py            real standings, form, H2H, splits from ESPN
+  sofascore_client.py      fixtures, rosters, bookmaker prices
+  api_football_client.py   optional API-Football soccer path
+  parlay_optimizer.py      parlays, correlation, Kelly staking
+  agent.py                 orchestrator (+ optional LLM review)
+  web.py                   FastAPI API + dashboard
+  database.py              SQLite prediction log
+  cli.py                   terminal UI
+tests/
+  test_markets.py          calibration and pricing regression tests
 ```
 
-## API Endpoints
+## API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/predictions` | Get predictions (filter by sport, confidence) |
-| POST | `/api/parlay` | Build optimized parlay (legs, strategy) |
-| GET | `/api/parlays` | Multiple parlay options |
-| GET | `/api/value-bets` | Find +EV value bets |
-| GET | `/api/report` | Full daily text report |
-| GET | `/api/sports` | List supported sports |
-| GET | `/` | Web dashboard |
+| GET | `/api/matches` | markets grouped by match (+ `data_source`, `data_notes`) |
+| GET | `/api/predictions` | flat prediction list |
+| GET | `/api/past-games` | any date, with final scores |
+| GET | `/api/value-bets` | +EV markets, book-priced only |
+| POST | `/api/parlay` | build a parlay |
+| GET | `/api/parlays` | parlays across strategies |
+| POST | `/api/sgp` · `/api/round-robin` · `/api/teaser` · `/api/flex-parlay` | parlay variants |
+| GET | `/api/sports` | sports with a real feed |
+| GET | `/api/report` · `/api/health` · `/` | report, health, dashboard |
 
-### Example: Build a 6-Leg Parlay
-```bash
-curl -X POST http://localhost:8000/api/parlay \
-  -H "Content-Type: application/json" \
-  -d '{"num_legs": 6, "strategy": "balanced"}'
-```
+## Optional AI layer
 
-### Example: Get Soccer Predictions
-```bash
-curl "http://localhost:8000/api/predictions?sport=football&min_confidence=70"
-```
+With `OPENAI_API_KEY` set, an LLM reviews picks for angles the statistics miss
+(motivation, derbies, scheduling). Without it the system runs on the
+statistical model alone — the model is the product; the LLM is commentary.
 
----
+## Known limitations
 
-## How the Prediction Model Works
+- **Early season is weak.** Three games of data is three games of data. The
+  model leans on last season's numbers, and says so on the match.
+- **Player markets are team-level.** Lines come from the team's projected
+  scoring and a positional share. Real names and positions, but there is no
+  per-player feed, so no per-player edge is claimed.
+- **No line-movement or multi-book comparison.** One price, one snapshot.
+- **Corners** appear only when a feed supplies corner counts, which ESPN does
+  not — so that market is normally absent by design.
 
-### 8-Factor Weighted Analysis
+## Future work
 
-Each prediction is scored across 8 factors, with sport-specific weights:
-
-1. **Form (20-30%)** — Recent W/D/L with recency weighting (last game > 5 games ago)
-2. **Home Advantage (3-12%)** — Sport-specific home boost + team's actual home record
-3. **Head-to-Head (8-18%)** — Historical matchup record (weighted heavily for tennis)
-4. **League Position (10-18%)** — Table position and points gap
-5. **Scoring Patterns (10-20%)** — Attack strength vs defense weakness matchup
-6. **Injuries (10-15%)** — Missing players penalty (key player identification)
-7. **Consistency (6-10%)** — Win rate stability
-8. **Momentum (5-7%)** — Last 3-5 game hot/cold streak
-
-### Parlay Optimization Strategies
-
-- **🛡️ Safe** — Picks highest confidence legs (most likely to hit)
-- **⚖️ Balanced** — Balances confidence with value (default)
-- **💎 Value** — Maximizes expected value (higher odds, slightly lower confidence)
-
-Anti-correlation: limits 2 picks per league to reduce correlated losses.
-
----
-
-## What This System Does That Others Don't
-
-1. **Real SofaScore data** — not sample data; live schedules, lineups, injuries, odds
-2. **Multi-sport** — not just soccer; covers 8+ sports with tuned models per sport
-3. **Value detection** — finds where bookmakers undervalue outcomes
-4. **Parlay optimization** — doesn't just pick random games; optimizes for max probability while minimizing correlation
-5. **Bankroll math** — Kelly Criterion prevents overbetting
-6. **Accuracy tracking** — logs results to measure and improve over time
-7. **AI layer** — optional GPT-4o review catches angles pure stats miss
-
----
-
-## Things to Know
-
-- **SofaScore data** is fetched from their public API endpoints. Responses are cached (5 min TTL) to be respectful of rate limits.
-- **OpenAI API key** is optional. Without it, predictions use pure statistical analysis. With it, you get enhanced reasoning.
-- **Accuracy depends on data quality** — top leagues (Premier League, NBA, etc.) have richer stats than lower divisions.
-- **This is for informational/entertainment purposes.** Bet responsibly.
-
----
-
-## Future Enhancements
-
-- [ ] Weather data integration (outdoor sports)
-- [ ] Line movement tracking (sharp money detection)
-- [ ] Player prop predictions
-- [ ] Live/in-play prediction updates
-- [ ] Telegram/Discord bot notifications
-- [ ] Machine learning model training on historical accuracy data
-- [ ] Multi-bookmaker odds comparison
+- [ ] Multi-bookmaker odds comparison and line-movement tracking
+- [ ] Per-player statistics feed for genuine player props
+- [ ] Weather for outdoor sports
+- [ ] Backtesting against the logged prediction history
+- [ ] Calibration report (predicted vs. realised, by probability bucket)

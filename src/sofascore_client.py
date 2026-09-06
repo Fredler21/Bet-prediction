@@ -1,12 +1,26 @@
 """
-SofaScore API Client — Fetches live schedules, stats, H2H, standings, lineups.
+Sports data client — fixtures, statistics, rosters and bookmaker prices.
 
-SofaScore's API requires browser-like access. This client supports multiple methods:
-1. Direct API (works from browsers / residential IPs)
-2. ScrapingBee/ScraperAPI proxy (for server environments)
-3. Demo mode with realistic sample data (for development/testing)
+ESPN's public API is the working data source, and needs no key. It supplies
+35 league feeds, standings, completed results, team rosters, and DraftKings
+moneyline/spread/total prices where it carries them. Real statistics are
+assembled in `src.espn_stats`.
 
-Set SOFASCORE_PROXY_KEY in .env if using a scraping proxy service.
+SofaScore is kept as an optional source but its API rejects server-side
+requests; set SOFASCORE_PROXY_KEY to route through a scraping proxy if you
+want it.
+
+Two things to know before changing this file:
+
+1. ESPN must be called with `_ESPN_HEADERS`, not `_HEADERS`. It answers 403 to
+   anything claiming to be a desktop browser without a browser's TLS
+   fingerprint. Sending the spoofed Chrome User-Agent made every ESPN call
+   fail in production, and the code then fell back to generating fixtures —
+   so the live site served invented matches between real teams.
+
+2. Generated data is off unless ENABLE_SAMPLE_DATA=1, and everything it
+   produces is marked `data_source="sample"`. A missing feed returns an empty
+   list. Nothing here fills a gap with a plausible-looking number.
 """
 
 from __future__ import annotations
@@ -23,6 +37,7 @@ from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import settings
+from src.espn_stats import ESPNStatsProvider
 from src.models import (
     Sport, Team, Tournament, TeamStats, HeadToHead,
     MatchEvent, MatchStatus, PlayerInfo,
@@ -31,35 +46,166 @@ from src.models import (
 # ── ESPN Public API (free, no key needed) ────────────────────────────────────
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 
-# Maps our Sport enum to ESPN endpoint(s): (espn_sport, league_slug, display_name, country, tournament_id, priority)
+# Maps our Sport enum to ESPN endpoint(s):
+# (espn_sport, league_slug, display_name, country, tournament_id, priority)
+# Every slug below was checked against the live scoreboard endpoint.
 _ESPN_LEAGUES: dict[Sport, list[tuple[str, str, str, str, int, int]]] = {
     Sport.SOCCER: [
+        ("soccer", "uefa.champions", "Champions League", "Europe", 7, 520),
+        ("soccer", "uefa.europa", "Europa League", "Europe", 6, 510),
+        ("soccer", "uefa.europa.conf", "Conference League", "Europe", 848, 490),
         ("soccer", "eng.1", "Premier League", "England", 17, 500),
         ("soccer", "esp.1", "La Liga", "Spain", 8, 480),
         ("soccer", "ita.1", "Serie A", "Italy", 23, 460),
         ("soccer", "ger.1", "Bundesliga", "Germany", 35, 450),
         ("soccer", "fra.1", "Ligue 1", "France", 34, 440),
-        ("soccer", "uefa.champions", "Champions League", "Europe", 7, 520),
-        ("soccer", "usa.1", "MLS", "USA", 242, 350),
+        ("soccer", "usa.1", "MLS", "USA", 242, 430),
+        ("soccer", "mex.1", "Liga MX", "Mexico", 262, 420),
+        ("soccer", "conmebol.libertadores", "Copa Libertadores",
+         "South America", 13, 410),
+        ("soccer", "bra.1", "Brasileirão Série A", "Brazil", 71, 400),
+        ("soccer", "arg.1", "Liga Profesional", "Argentina", 128, 390),
+        ("soccer", "uefa.nations", "UEFA Nations League", "Europe", 5, 380),
+        ("soccer", "fifa.worldq.uefa", "World Cup Qualifying (UEFA)",
+         "Europe", 32, 370),
+        ("soccer", "ned.1", "Eredivisie", "Netherlands", 88, 360),
+        ("soccer", "por.1", "Primeira Liga", "Portugal", 94, 350),
+        ("soccer", "ksa.1", "Saudi Pro League", "Saudi Arabia", 350, 340),
+        ("soccer", "tur.1", "Süper Lig", "Turkey", 203, 330),
+        ("soccer", "eng.2", "Championship", "England", 40, 300),
+        ("soccer", "sco.1", "Scottish Premiership", "Scotland", 179, 290),
+        ("soccer", "eng.fa", "FA Cup", "England", 45, 280),
+        ("soccer", "eng.league_cup", "Carabao Cup", "England", 41, 275),
+        ("soccer", "esp.copa_del_rey", "Copa del Rey", "Spain", 143, 270),
     ],
     Sport.BASKETBALL: [
         ("basketball", "nba", "NBA", "USA", 132, 500),
+        ("basketball", "wnba", "WNBA", "USA", 133, 420),
+        ("basketball", "mens-college-basketball", "NCAA Men's Basketball",
+         "USA", 1340, 360),
+        ("basketball", "womens-college-basketball", "NCAA Women's Basketball",
+         "USA", 1341, 300),
+        ("basketball", "nba-development", "NBA G League", "USA", 1342, 240),
     ],
     Sport.BASEBALL: [
         ("baseball", "mlb", "MLB", "USA", 11205, 480),
+        ("baseball", "college-baseball", "NCAA Baseball", "USA", 11206, 260),
     ],
     Sport.AMERICAN_FOOTBALL: [
         ("football", "nfl", "NFL", "USA", 9464, 500),
+        ("football", "college-football", "NCAA Football", "USA", 9465, 400),
     ],
     Sport.HOCKEY: [
         ("hockey", "nhl", "NHL", "USA", 234, 480),
+        ("hockey", "mens-college-hockey", "NCAA Men's Ice Hockey",
+         "USA", 235, 250),
     ],
 }
+
+# Reverse lookup: our tournament id -> (espn_sport, slug). Needed so the
+# enrichment step knows which league feed to pull standings from.
+_TID_TO_ESPN: dict[int, tuple[str, str]] = {
+    entry[4]: (entry[0], entry[1])
+    for entries in _ESPN_LEAGUES.values()
+    for entry in entries
+}
+
+
+def _american_str_to_decimal(raw) -> float:
+    """Convert an American price like '-205' or '+170' to decimal odds."""
+    if raw is None:
+        return 0.0
+    try:
+        val = int(str(raw).replace("+", "").strip())
+    except (ValueError, TypeError):
+        return 0.0
+    if val == 0:
+        return 0.0
+    if val > 0:
+        return round(1 + val / 100, 3)
+    return round(1 + 100 / abs(val), 3)
+
+
+def _side_price(node: dict) -> tuple[float, Optional[float]]:
+    """Pull (decimal odds, line) from an ESPN odds side.
+
+    Each side looks like {"close": {"odds": "-115", "line": "-3.5"},
+    "open": {...}}. The closing price is preferred; the opening price is the
+    fallback when a game has not been re-priced yet.
+    """
+    if not isinstance(node, dict):
+        return 0.0, None
+    for window in ("close", "open", "current"):
+        block = node.get(window)
+        if not isinstance(block, dict):
+            continue
+        dec = _american_str_to_decimal(block.get("odds"))
+        line_raw = str(block.get("line", "") or "").lstrip("ou")
+        try:
+            line = float(line_raw) if line_raw else None
+        except ValueError:
+            line = None
+        if dec > 1.0:
+            return dec, line
+    # Some feeds put the price straight on the node.
+    return _american_str_to_decimal(node.get("odds")), None
+
+
+def _parse_espn_market(o: dict) -> dict:
+    """Extract the real market (moneyline, spread, total) from ESPN odds.
+
+    All three markets carry both a line and a price per side, which is what
+    makes genuine expected-value comparison possible — our own model price is
+    not evidence of anything on its own.
+    """
+    out: dict = {}
+    provider = (o.get("provider") or {}).get("displayName") or (
+        o.get("provider") or {}
+    ).get("name")
+    if provider:
+        out["odds_provider"] = provider
+    out["details"] = o.get("details", "")
+
+    try:
+        out["spread"] = float(o.get("spread") or 0)
+    except (TypeError, ValueError):
+        out["spread"] = 0.0
+    try:
+        out["overUnder"] = float(o.get("overUnder") or 0)
+    except (TypeError, ValueError):
+        out["overUnder"] = 0.0
+    out["homeFavorite"] = bool(
+        (o.get("homeTeamOdds") or {}).get("favorite", False)
+    )
+
+    ml = o.get("moneyline") or {}
+    for key, label in (("home", "home"), ("away", "away"), ("draw", "draw")):
+        dec, _ = _side_price(ml.get(key) or {})
+        if dec > 1.0:
+            out[f"moneyline_{label}_decimal"] = dec
+
+    ps = o.get("pointSpread") or {}
+    for key in ("home", "away"):
+        dec, line = _side_price(ps.get(key) or {})
+        if dec > 1.0:
+            out[f"spread_{key}_decimal"] = dec
+        if line is not None:
+            out[f"spread_{key}_line"] = line
+
+    tot = o.get("total") or {}
+    for key in ("over", "under"):
+        dec, line = _side_price(tot.get(key) or {})
+        if dec > 1.0:
+            out[f"total_{key}_decimal"] = dec
+        if line is not None:
+            out[f"total_line"] = line
+
+    return out
 
 # Rate-limit friendly cache
 _cache = TTLCache(maxsize=500, ttl=settings.sofascore_cache_ttl)
 
-# Standard headers to mimic browser requests
+# Headers for the SofaScore endpoints, which do want browser-like requests.
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -77,10 +223,33 @@ _HEADERS = {
     "Connection": "keep-alive",
 }
 
+# ESPN must NOT get the headers above. It answers 403 to anything claiming to
+# be a desktop browser without a browser's TLS fingerprint, and a plain client
+# identifier is served normally. Sending the spoofed Chrome User-Agent is what
+# made every ESPN call fail in production, which silently dropped the whole
+# site onto generated fixtures — real teams, invented matches. Keep these
+# headers plain.
+_ESPN_HEADERS = {
+    "User-Agent": "bet-prediction/1.0 (+https://github.com/Fredler21/Bet-prediction)",
+    "Accept": "application/json",
+}
+
 BASE = settings.sofascore_base_url
 
 # Proxy API key for scraping services (ScrapingBee, ScraperAPI, etc.)
 PROXY_KEY = os.getenv("SOFASCORE_PROXY_KEY", "")
+
+# Generated fixtures are OFF unless explicitly switched on for local work.
+#
+# This used to be the silent fallback whenever a feed failed, and because the
+# ESPN calls were being rejected (see _ESPN_HEADERS) it was what production
+# actually served: invented fixtures between real teams. On 6 September 2026
+# the live site was offering "Manchester United vs West Ham" when the real
+# fixture that day was Manchester United at Everton. A missing feed must show
+# nothing rather than something made up.
+SAMPLE_DATA_ENABLED = os.getenv("ENABLE_SAMPLE_DATA", "").lower() in {
+    "1", "true", "yes",
+}
 
 
 class SofaScoreClient:
@@ -90,6 +259,8 @@ class SofaScoreClient:
         self._client: Optional[httpx.AsyncClient] = None
         self._demo_mode = demo_mode
         self._demo = DemoDataProvider()
+        # Real statistics come from here; see src/espn_stats.py.
+        self._stats = ESPNStatsProvider()
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -103,6 +274,7 @@ class SofaScoreClient:
     async def close(self):
         if self._client and not self._client.is_closed:
             await self._client.aclose()
+        await self._stats.close()
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=1, max=5))
     async def _get(self, url: str) -> dict:
@@ -177,16 +349,30 @@ class SofaScoreClient:
                     logger.info(f"Found {len(events)} {sport.value} events via SofaScore")
                     return events
 
-        # ── 2. Try ESPN (real data, no key needed) ──
+        # ── 2. ESPN (real data, no key needed) ──
         espn_events = await self._fetch_espn_events(sport, d)
         if espn_events:
             logger.info(f"Found {len(espn_events)} {sport.value} events via ESPN")
             return espn_events
 
-        # ── 3. Demo fallback ──
-        logger.info(f"Using demo data for {sport.value}")
+        # ── 3. Nothing real for this sport and date ──
+        # Returning an empty list is the correct answer: most of these sports
+        # are simply out of season on any given day. Generating stand-in
+        # fixtures here is what put invented matches on the live site.
+        if not SAMPLE_DATA_ENABLED:
+            logger.info(f"No real {sport.value} fixtures for {date_str}")
+            return []
+
+        logger.warning(
+            f"ENABLE_SAMPLE_DATA is set — generating stand-in "
+            f"{sport.value} fixtures for {date_str}. These are not real."
+        )
         events = self._demo.generate_events(sport, d)
-        logger.info(f"Found {len(events)} {sport.value} demo events")
+        for evt in events:
+            evt.data_source = "sample"
+            evt.data_notes.append(
+                "SAMPLE DATA — this fixture is generated, not a real match."
+            )
         return events
 
     # ── ESPN Integration ─────────────────────────────────────────────────
@@ -200,18 +386,21 @@ class SofaScoreClient:
             return []
 
         client = await self._get_client()
-        events = []
+        events: list[MatchEvent] = []
         date_str = target_date.strftime("%Y%m%d")
 
-        for espn_sport, slug, league_name, country, tid, priority in leagues:
+        async def fetch_league(
+            espn_sport: str, slug: str, league_name: str,
+            country: str, tid: int, priority: int,
+        ) -> list[MatchEvent]:
             url = f"{_ESPN_BASE}/{espn_sport}/{slug}/scoreboard?dates={date_str}"
+            out: list[MatchEvent] = []
             try:
-                resp = await client.get(url, headers={
-                    "User-Agent": _HEADERS["User-Agent"],
-                    "Accept": "application/json",
-                })
+                # _ESPN_HEADERS, not _HEADERS — see the note by their definition.
+                resp = await client.get(url, headers=_ESPN_HEADERS)
                 if resp.status_code != 200:
-                    continue
+                    logger.warning(f"ESPN {slug} → HTTP {resp.status_code}")
+                    return out
                 data = resp.json()
                 for evt_data in data.get("events", []):
                     try:
@@ -219,13 +408,34 @@ class SofaScoreClient:
                             evt_data, sport, league_name, country, tid, priority
                         )
                         if parsed:
-                            events.append(parsed)
+                            parsed.espn_data["espn_sport"] = espn_sport
+                            parsed.espn_data["espn_slug"] = slug
+                            out.append(parsed)
                     except Exception as e:
                         logger.warning(f"Skipping ESPN event: {e}")
             except Exception as e:
                 logger.warning(f"ESPN {slug} fetch failed: {e}")
+            return out
 
-        return events
+        # Fetch every league for this sport concurrently — there are now two
+        # dozen soccer competitions, and doing them in series was slow enough
+        # to risk the serverless request timeout.
+        results = await asyncio.gather(
+            *(fetch_league(*league) for league in leagues),
+            return_exceptions=True,
+        )
+        for res in results:
+            if isinstance(res, Exception):
+                logger.warning(f"ESPN league fetch error: {res}")
+                continue
+            events.extend(res)
+
+        # The same fixture can appear in both a league and a cup feed.
+        unique: dict[int, MatchEvent] = {}
+        for evt in events:
+            if evt.id not in unique or evt.tournament.priority > unique[evt.id].tournament.priority:
+                unique[evt.id] = evt
+        return list(unique.values())
 
     def _parse_espn_event(
         self,
@@ -252,17 +462,24 @@ class SofaScoreClient:
         home_tm = home.get("team") or {}
         away_tm = away.get("team") or {}
 
-        # Status
-        status_name = comp.get("status", {}).get("type", {}).get("name", "")
-        status_map = {
-            "STATUS_SCHEDULED": MatchStatus.NOT_STARTED,
-            "STATUS_IN_PROGRESS": MatchStatus.LIVE,
-            "STATUS_HALFTIME": MatchStatus.LIVE,
-            "STATUS_END_PERIOD": MatchStatus.LIVE,
-            "STATUS_FINAL": MatchStatus.FINISHED,
-            "STATUS_POSTPONED": MatchStatus.POSTPONED,
-        }
-        status = status_map.get(status_name, MatchStatus.NOT_STARTED)
+        # Status. Match on `state`/`completed` rather than the status name:
+        # soccer reports STATUS_FULL_TIME, which the old name-only map did not
+        # know, so finished matches were treated as not started and had fresh
+        # predictions generated for them.
+        status_type = comp.get("status", {}).get("type", {}) or {}
+        status_name = status_type.get("name", "")
+        state = str(status_type.get("state", "")).lower()
+
+        if status_name in ("STATUS_POSTPONED", "STATUS_DELAYED"):
+            status = MatchStatus.POSTPONED
+        elif status_name in ("STATUS_CANCELED", "STATUS_CANCELLED"):
+            status = MatchStatus.CANCELLED
+        elif status_type.get("completed") or state == "post":
+            status = MatchStatus.FINISHED
+        elif state == "in":
+            status = MatchStatus.LIVE
+        else:
+            status = MatchStatus.NOT_STARTED
 
         # Parse scores for finished/live games
         try:
@@ -283,15 +500,11 @@ class SofaScoreClient:
 
         event_id = int(data.get("id", 0))
 
-        # ESPN odds
+        # Real bookmaker market, when ESPN carries one for this game.
         espn_data: dict = {}
-        odds_list = comp.get("odds", [])
+        odds_list = [o for o in (comp.get("odds") or []) if isinstance(o, dict)]
         if odds_list:
-            o = odds_list[0]
-            espn_data["spread"] = float(o.get("spread", 0) or 0)
-            espn_data["overUnder"] = float(o.get("overUnder", 0) or 0)
-            espn_data["homeFavorite"] = o.get("homeTeamOdds", {}).get("favorite", False)
-            espn_data["details"] = o.get("details", "")
+            espn_data.update(_parse_espn_market(odds_list[0]))
 
         # Records (e.g. "45-23" for NBA, "9-14-7" for soccer)
         home_recs = home.get("records", [])
@@ -539,16 +752,35 @@ class SofaScoreClient:
     # ── Enrichment Pipeline ──────────────────────────────────────────────
 
     async def enrich_event(self, event: MatchEvent) -> MatchEvent:
-        """Enrich an event with full stats, H2H, injuries, odds."""
-        has_espn = bool(event.espn_data)
+        """Attach real statistics, head-to-head and market prices.
 
-        if self._demo_mode or has_espn:
-            # Use demo enricher for stats/H2H/injuries, then overlay ESPN real odds
+        This method used to call the demo enricher whenever ESPN data was
+        present, which meant a genuine fixture was analysed with
+        `random.uniform` scoring rates, a random form string, a random
+        head-to-head record and injuries named "Player 17". Only the win/loss
+        record was real. Every confidence figure the site published rested on
+        those numbers.
+
+        Real ESPN standings and completed results are used instead. Anything
+        that cannot be sourced is left empty and noted on the event, so the
+        model can skip it rather than fill it in.
+        """
+        if event.espn_data.get("espn_slug"):
+            return await self._enrich_from_espn(event)
+
+        if self._demo_mode:
+            if not SAMPLE_DATA_ENABLED:
+                event.data_source = "partial"
+                event.data_notes.append(
+                    "No statistics feed reached for this fixture."
+                )
+                return event
             event = self._demo.enrich_event(event)
-            # Apply ESPN odds if available (real DraftKings odds)
-            if has_espn:
-                self._apply_espn_odds(event)
-                self._apply_espn_records(event)
+            event.data_source = "sample"
+            event.data_notes.append(
+                "SAMPLE DATA — figures are generated for local development "
+                "and are not real."
+            )
             return event
 
         tournament_id = event.tournament.id
@@ -657,78 +889,179 @@ class SofaScoreClient:
 
         return event
 
+    # ── Real ESPN enrichment ─────────────────────────────────────────────
+
+    async def _enrich_from_espn(self, event: MatchEvent) -> MatchEvent:
+        """Build the event's statistics from real ESPN data."""
+        espn_sport = event.espn_data.get("espn_sport", "")
+        slug = event.espn_data.get("espn_slug", "")
+        if not espn_sport or not slug:
+            event.data_source = "partial"
+            return event
+
+        provider = self._stats
+        sport = event.tournament.sport
+        season = event.start_time.year
+
+        standings = await provider.get_standings(espn_sport, slug, season)
+        if not standings:
+            # US leagues answer the season-less URL with the current season.
+            standings = await provider.get_standings(espn_sport, slug)
+
+        (home_stats, home_ok), (away_stats, away_ok), h2h, rosters = (
+            await asyncio.gather(
+                provider.build_team_stats(
+                    sport, espn_sport, slug, event.home_team.id,
+                    event.home_team.name, standings.get(event.home_team.id),
+                ),
+                provider.build_team_stats(
+                    sport, espn_sport, slug, event.away_team.id,
+                    event.away_team.name, standings.get(event.away_team.id),
+                ),
+                provider.get_head_to_head(
+                    espn_sport, slug, event.home_team.id, event.away_team.id
+                ),
+                self._fetch_rosters(espn_sport, slug, event),
+                return_exceptions=False,
+            )
+        )
+
+        event.home_stats = home_stats
+        event.away_stats = away_stats
+        event.h2h = h2h  # None when the sides have not met — no invented record
+
+        # The league scoring baseline anchors the attack/defence model. Before
+        # a season's first game the table is all zeroes, so fall back to last
+        # season — which is also where the team form came from, keeping the
+        # baseline and the team rates on the same footing.
+        vals = [r["avg_for"] for r in standings.values() if r["avg_for"] > 0]
+        if not vals:
+            prior = await provider.get_standings(espn_sport, slug, season - 1)
+            vals = [r["avg_for"] for r in prior.values() if r["avg_for"] > 0]
+            if vals:
+                event.data_notes.append(
+                    "League scoring baseline taken from last season — the new "
+                    "one has not started."
+                )
+        if vals:
+            event.espn_data["league_baseline"] = round(sum(vals) / len(vals), 3)
+
+        if rosters:
+            event.espn_data.update(rosters)
+
+        self._apply_espn_odds(event)
+
+        notes: list[str] = []
+        if not (home_ok and away_ok):
+            missing = []
+            if not home_ok:
+                missing.append(event.home_team.name)
+            if not away_ok:
+                missing.append(event.away_team.name)
+            notes.append(
+                "No season statistics available for "
+                + " and ".join(missing)
+                + " — this projection falls back to league averages."
+            )
+        if h2h is None:
+            notes.append("No recent head-to-head meetings on record.")
+        for stats in (home_stats, away_stats):
+            if stats.extra.get("form_from_prior_season"):
+                notes.append(
+                    f"{stats.team_name} form is from last season — the new "
+                    "campaign has not started."
+                )
+
+        event.data_notes.extend(notes)
+        event.data_source = "live" if (home_ok and away_ok) else "partial"
+        return event
+
+    async def _fetch_rosters(
+        self, espn_sport: str, slug: str, event: MatchEvent
+    ) -> dict:
+        """Fetch both squads so player markets can use real names.
+
+        Replaces the hand-typed star-player table, which had drifted out of
+        date (Anthony Davis was still listed at the Lakers).
+        """
+        client = await self._get_client()
+
+        async def one(team_id: int) -> list[dict]:
+            url = f"{_ESPN_BASE}/{espn_sport}/{slug}/teams/{team_id}/roster"
+            try:
+                resp = await client.get(url, headers=_ESPN_HEADERS)
+                if resp.status_code != 200:
+                    return []
+                data = resp.json()
+            except Exception as e:
+                logger.debug(f"Roster fetch failed for {team_id}: {e}")
+                return []
+
+            athletes = data.get("athletes") or []
+            # Some sports group athletes by position bucket.
+            if athletes and isinstance(athletes[0], dict) and "items" in athletes[0]:
+                flat: list[dict] = []
+                for group in athletes:
+                    flat.extend(group.get("items") or [])
+                athletes = flat
+
+            out: list[dict] = []
+            for a in athletes:
+                name = a.get("fullName") or a.get("displayName")
+                if not name:
+                    continue
+                pos = (a.get("position") or {})
+                out.append({
+                    "name": name,
+                    "position": pos.get("displayName") or pos.get("name") or "",
+                })
+            return out
+
+        try:
+            home_roster, away_roster = await asyncio.gather(
+                one(event.home_team.id), one(event.away_team.id)
+            )
+        except Exception:
+            return {}
+        result = {}
+        if home_roster:
+            result["home_roster"] = home_roster
+        if away_roster:
+            result["away_roster"] = away_roster
+        return result
+
     # ── ESPN Data Overlay ────────────────────────────────────────────────
 
     def _apply_espn_odds(self, event: MatchEvent) -> None:
-        """Apply real DraftKings odds from ESPN data to the event."""
+        """Apply the real bookmaker moneyline, when ESPN supplied one.
+
+        The previous version of this method derived odds from the spread and
+        then jittered them with `random.Random(event.id).uniform(...)`, while
+        its docstring claimed they were real DraftKings prices. Those invented
+        numbers were then fed to the expected-value calculation, so the "value
+        bets" list was ranking noise.
+
+        Now a price is set only when the feed actually carried one, and
+        `has_book_odds` records whether that happened.
+        """
         ed = event.espn_data
-        spread = ed.get("spread", 0)
-        ou = ed.get("overUnder", 0)
-        home_fav = ed.get("homeFavorite", False)
+        home_ml = ed.get("moneyline_home_decimal", 0.0)
+        away_ml = ed.get("moneyline_away_decimal", 0.0)
+        draw_ml = ed.get("moneyline_draw_decimal", 0.0)
 
-        # Convert spread to approximate moneyline odds
-        if spread:
-            abs_spread = abs(spread)
-            # Rough spread → decimal odds mapping
-            if abs_spread <= 1:
-                fav_odds = round(1.60 + random.Random(event.id).uniform(-0.15, 0.15), 2)
-            elif abs_spread <= 3:
-                fav_odds = round(1.40 + random.Random(event.id).uniform(-0.10, 0.10), 2)
-            elif abs_spread <= 7:
-                fav_odds = round(1.25 + random.Random(event.id).uniform(-0.05, 0.10), 2)
-            else:
-                fav_odds = round(1.12 + random.Random(event.id).uniform(-0.02, 0.08), 2)
-
-            dog_odds = round(1 + (fav_odds - 1) * 2.2, 2)
-
-            if home_fav:
-                event.home_odds = fav_odds
-                event.away_odds = dog_odds
-            else:
-                event.home_odds = dog_odds
-                event.away_odds = fav_odds
-
-            # Soccer draw odds
-            sport = event.tournament.sport
-            if sport == Sport.SOCCER:
-                event.draw_odds = round(
-                    (event.home_odds + event.away_odds) / 2
-                    + random.Random(event.id + 1).uniform(0.3, 1.0),
-                    2,
-                )
-
-    def _apply_espn_records(self, event: MatchEvent) -> None:
-        """Seed demo stats with real ESPN win/loss records."""
-        ed = event.espn_data
-        home_rec = ed.get("homeRecord", "")
-        away_rec = ed.get("awayRecord", "")
-
-        def parse_record(rec: str) -> tuple[int, int, int]:
-            """Parse 'W-L' or 'W-D-L' record string."""
-            parts = [int(x) for x in rec.split("-") if x.strip().isdigit()]
-            if len(parts) == 3:
-                return parts[0], parts[1], parts[2]  # W-D-L
-            elif len(parts) == 2:
-                return parts[0], 0, parts[1]  # W-L
-            return 0, 0, 0
-
-        if home_rec and event.home_stats:
-            w, d, l = parse_record(home_rec)
-            total = w + d + l
-            if total > 0:
-                event.home_stats.wins = w
-                event.home_stats.draws = d
-                event.home_stats.losses = l
-                event.home_stats.games_played = total
-
-        if away_rec and event.away_stats:
-            w, d, l = parse_record(away_rec)
-            total = w + d + l
-            if total > 0:
-                event.away_stats.wins = w
-                event.away_stats.draws = d
-                event.away_stats.losses = l
-                event.away_stats.games_played = total
+        if home_ml > 1.0 and away_ml > 1.0:
+            event.home_odds = home_ml
+            event.away_odds = away_ml
+            event.draw_odds = draw_ml if draw_ml > 1.0 else 0.0
+            event.has_book_odds = True
+            event.data_notes.append(
+                f"Bookmaker prices from {ed.get('odds_provider', 'the feed')}."
+            )
+        else:
+            event.home_odds = 0.0
+            event.away_odds = 0.0
+            event.draw_odds = 0.0
+            event.has_book_odds = False
 
     # ── Internal Parsers ─────────────────────────────────────────────────
 

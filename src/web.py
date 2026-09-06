@@ -106,6 +106,14 @@ class PredictionResponse(BaseModel):
     line: Optional[float] = None
     team_name: str
     push_note: str
+    # "book"  — a real bookmaker price; value_rating is expected value
+    #           against it.
+    # "model" — our own fair price. value_rating is 0, because scoring our
+    #           model against our own number proves nothing.
+    price_source: str = "model"
+    push_probability: float = 0.0
+    # "live" | "partial" | "sample" — see MatchEvent.data_source.
+    data_source: str = "live"
 
 
 class MatchGroupResponse(BaseModel):
@@ -122,6 +130,9 @@ class MatchGroupResponse(BaseModel):
     home_score: Optional[int] = None
     away_score: Optional[int] = None
     predictions: list[PredictionResponse]
+    data_source: str = "live"
+    data_notes: list[str] = []
+    has_book_odds: bool = False
 
 
 class ParlayLegResponse(BaseModel):
@@ -210,6 +221,9 @@ def _pred_to_response(p) -> PredictionResponse:
         line=p.line,
         team_name=p.team_name or "",
         push_note=p.push_note or "",
+        price_source=getattr(p, "price_source", "model"),
+        push_probability=getattr(p, "push_probability", 0.0),
+        data_source=p.event.data_source,
     )
 
 
@@ -296,6 +310,9 @@ async def get_matches_grouped(
             home_score=ev.home_score,
             away_score=ev.away_score,
             predictions=[_pred_to_response(p) for p in match["predictions"]],
+            data_source=ev.data_source,
+            data_notes=ev.data_notes,
+            has_book_odds=ev.has_book_odds,
         ))
     return results
 
@@ -452,9 +469,24 @@ async def get_daily_report():
 
 @app.get("/api/sports")
 async def list_sports():
+    """Sports we actually have a live fixture feed for.
+
+    The Sport enum also covers tennis, volleyball, MMA, handball and rugby,
+    none of which have a feed wired up. Advertising them gave the nav five
+    tabs that could only ever come back empty — or, before generated fixtures
+    were switched off, five tabs of invented matches.
+    """
+    from src.sofascore_client import _ESPN_LEAGUES
+
     return [
-        {"name": s.name, "slug": s.value, "emoji": SPORT_EMOJIS.get(s, "🏆")}
+        {
+            "name": s.name,
+            "slug": s.value,
+            "emoji": SPORT_EMOJIS.get(s, "🏆"),
+            "leagues": len(_ESPN_LEAGUES.get(s, [])),
+        }
         for s in Sport
+        if _ESPN_LEAGUES.get(s)
     ]
 
 
@@ -904,6 +936,48 @@ body {
 .expand-arrow.open { transform:rotate(180deg); }
 
 /* ─────────────────────────────────────────────
+   PRICE PROVENANCE
+   Whether a price is a real bookmaker line or our own fair price is the
+   single most important thing to be clear about on this page, so it is
+   labelled on every row rather than explained once in a footnote.
+───────────────────────────────────────────── */
+.price-tag {
+  font-size:0.56em; font-weight:800; letter-spacing:0.6px;
+  padding:2px 5px; border-radius:3px; white-space:nowrap;
+}
+.price-tag.book {
+  color:#052e16; background:#4ade80;
+}
+.price-tag.model {
+  color:var(--dim2); background:rgba(255,255,255,0.08);
+  border:1px solid var(--border);
+}
+.edge-tag {
+  font-size:0.6em; font-weight:800; color:#052e16; background:#fbbf24;
+  padding:2px 5px; border-radius:3px; white-space:nowrap;
+}
+.push-tag { font-size:0.8em; color:var(--yellow); margin-left:5px; }
+
+.data-banner {
+  padding:8px 16px; font-size:0.76em; font-weight:700; letter-spacing:0.3px;
+}
+.data-banner.sample {
+  background:rgba(239,68,68,0.18); color:#fca5a5;
+  border-top:1px solid rgba(239,68,68,0.4);
+  border-bottom:1px solid rgba(239,68,68,0.4);
+}
+.data-banner.partial {
+  background:rgba(251,191,36,0.14); color:#fcd34d;
+  border-top:1px solid rgba(251,191,36,0.35);
+  border-bottom:1px solid rgba(251,191,36,0.35);
+}
+.data-notes {
+  padding:7px 16px; font-size:0.72em; color:var(--dim2);
+  line-height:1.55; background:rgba(0,0,0,0.22);
+  border-bottom:1px solid var(--border);
+}
+
+/* ─────────────────────────────────────────────
    EXPANDED PICKS PANEL
 ───────────────────────────────────────────── */
 .hrb-picks-panel {
@@ -1293,12 +1367,14 @@ function confPill(c) {
 }
 
 // Bet type categorisation
-const GAME_LINE_TYPES = new Set(['moneyline','game_result_90','spread','alternate_spread','over_under','alternate_total','btts','double_chance','draw_no_bet','correct_score','game_props','first_to_score','overtime','race_to','futures','winning_margin']);
-const PLAYER_PROP_TYPES = new Set(['player_props']);
-const HALVES_TYPES = new Set(['first_half','halftime_result','halftime_over_under']);
-const TEAM_TYPES = new Set(['team_total','quarter_props']);
+// Every bet_type the engine can emit must appear in one of these sets, or
+// the market is generated and then silently dropped by the tab filters.
+const GAME_LINE_TYPES = new Set(['moneyline','game_result_90','spread','alternate_spread','over_under','alternate_total','btts','double_chance','draw_no_bet','correct_score','game_props','first_to_score','overtime','race_to','futures','winning_margin','asian_handicap','three_way','result_total','result_btts','exact_total']);
+const PLAYER_PROP_TYPES = new Set(['player_props','anytime_scorer']);
+const HALVES_TYPES = new Set(['first_half','halftime_result','halftime_over_under','ht_ft','both_halves_over','period_result','quarter_props','first_5_innings']);
+const TEAM_TYPES = new Set(['team_total','clean_sheet','win_to_nil']);
 const GOALS_TYPES = new Set(['odd_even','corners']);
-const SGP_TYPES = new Set(['over_under','btts','double_chance','game_result_90','spread','correct_score','player_props','first_half','halftime_result','halftime_over_under','team_total','odd_even','alternate_spread','alternate_total','game_props','winning_margin']);
+const SGP_TYPES = new Set(['over_under','btts','double_chance','game_result_90','spread','correct_score','player_props','first_half','halftime_result','halftime_over_under','team_total','odd_even','alternate_spread','alternate_total','game_props','winning_margin','asian_handicap','anytime_scorer','clean_sheet','ht_ft']);
 
 const marketNames = {
   moneyline:'Moneyline', game_result_90:'Game Result (90 Min + Stoppage Time)',
@@ -1311,8 +1387,15 @@ const marketNames = {
   quarter_props:'Quarter / Period Props', race_to:'Race to X',
   futures:'Futures', first_half:'1st Half Markets',
   halftime_result:'Half-Time Result', halftime_over_under:'1st Half Over/Under',
-  player_props:'Anytime Goalscorer', team_total:'Team Total Goals',
+  player_props:'Player Points', team_total:'Team Total',
   corners:'Corners Over/Under', winning_margin:'Winning Margin',
+  asian_handicap:'Asian Handicap', ht_ft:'Half-Time / Full-Time',
+  clean_sheet:'Clean Sheet', win_to_nil:'Win to Nil',
+  exact_total:'Exact Total', both_halves_over:'Both Halves Over',
+  result_total:'Result + Total', result_btts:'Result + Both Teams to Score',
+  three_way:'3-Way (Regulation)', first_5_innings:'First 5 Innings',
+  period_result:'Period / Half Winner', anytime_scorer:'Anytime Goalscorer',
+ 
 };
 
 function oddsClass(ao) {
@@ -1412,10 +1495,23 @@ function renderMatchCard(match) {
       </div>
       <div class="hrb-picks-panel" id="${pid}">`;
       for (const p of bpreds.slice(0,8)) {
-        const od = p.american_odds || (p.odds>0?p.odds.toFixed(2):'—');
+        const od = p.american_odds || (p.odds>0?p.odds.toFixed(2):'&mdash;');
+        // Say which prices are real. A model fair price is not an offer, and
+        // showing the two identically is how the old build made its own
+        // arithmetic look like a bookmaker's line.
+        const isBook = p.price_source === 'book';
+        const srcTag = isBook
+          ? '<span class="price-tag book" title="Real bookmaker price">BOOK</span>'
+          : '<span class="price-tag model" title="Our model\'s fair price, not an offer">MODEL</span>';
+        const edge = (isBook && p.value_rating > 0)
+          ? `<span class="edge-tag" title="Expected value against the posted price">+${(p.value_rating*100).toFixed(1)}%</span>`
+          : '';
+        const push = p.push_note
+          ? `<span class="push-tag" title="${p.push_note}">&#9888;</span>` : '';
         html += `<div class="hrb-pick-row">
-          <span class="hrb-pick-name">${p.pick}</span>
+          <span class="hrb-pick-name">${p.pick}${push}</span>
           <div class="hrb-pick-meta">
+            ${edge}${srcTag}
             <span class="hrb-pick-odds ${oddsClass(p.american_odds)}">${od}</span>
             ${confPill(p.confidence)}
           </div>
@@ -1434,6 +1530,19 @@ function renderMatchCard(match) {
     tabPanes += `<div id="ipane-${id}-${t.key}" style="display:${active?'block':'none'}">${renderCatContent(t.key, byCategory[t.key])}</div>`;
   }
 
+  // Surface data provenance on the card. A projection built on incomplete
+  // inputs should say so where the numbers are read, not only in the API.
+  let provenance = '';
+  if (match.data_source === 'sample') {
+    provenance = `<div class="data-banner sample">&#9888; SAMPLE DATA &mdash; this fixture is generated for development and is not a real match.</div>`;
+  } else if (match.data_source === 'partial') {
+    provenance = `<div class="data-banner partial">&#9888; Incomplete data for this fixture &mdash; treat these numbers with caution.</div>`;
+  }
+  const notes = (match.data_notes || []).filter(n => !n.startsWith('Bookmaker prices'));
+  if (notes.length) {
+    provenance += `<div class="data-notes">${notes.map(n=>`&bull; ${n}`).join('<br>')}</div>`;
+  }
+
   return `<div class="hrb-card">
     <div class="hrb-card-header">
       <div class="hrb-breadcrumb">
@@ -1449,6 +1558,7 @@ function renderMatchCard(match) {
       </div>
       <div class="hrb-match-time">${timeLine}</div>
     </div>
+    ${provenance}
     <div class="hrb-inner-tabs">${tabNav}</div>
     <div>${tabPanes}</div>
   </div>`;

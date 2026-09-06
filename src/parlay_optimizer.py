@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import itertools
 import math
+import re
 from typing import Optional
 
 from loguru import logger
+from src.analyzer import StatisticalAnalyzer
 from src.config import settings
+from src.markets import decimal_to_american
 from src.models import (
-    Prediction, ParlayPrediction, BankrollAdvice, BetType
+    Prediction, ParlayPrediction, BankrollAdvice, BetType, Sport
 )
 
 
@@ -30,13 +33,24 @@ class ParlayOptimizer:
 
     def __init__(
         self,
-        min_confidence: float = 0,
-        max_legs: int = 0,
-        bankroll: float = 0,
+        min_confidence: Optional[float] = None,
+        max_legs: Optional[int] = None,
+        bankroll: Optional[float] = None,
     ):
-        self.min_confidence = min_confidence or settings.parlay_min_confidence
-        self.max_legs = max_legs or settings.max_parlay_legs
-        self.bankroll = bankroll or settings.default_bankroll
+        # `None` means "use the configured default". The previous signature
+        # defaulted these to 0 and then did `min_confidence or default`, so
+        # passing 0 — a legitimate "no confidence floor" — was silently
+        # replaced by the 70% default, and every leg got filtered out.
+        self.min_confidence = (
+            settings.parlay_min_confidence if min_confidence is None
+            else min_confidence
+        )
+        self.max_legs = (
+            settings.max_parlay_legs if max_legs is None else max_legs
+        )
+        self.bankroll = (
+            settings.default_bankroll if bankroll is None else bankroll
+        )
 
     def build_parlay(
         self,
@@ -52,8 +66,11 @@ class ParlayOptimizer:
         - "value": Maximize expected value (best odds/probability ratio)
         - "balanced": Balance confidence and value
         """
-        # Filter to only high-confidence picks (1 per event)
-        filtered = self._filter_best_per_event(predictions)
+        # Restrict to bettable prices first, then take one leg per event.
+        # Order matters: filtering per event first would pick the 94%
+        # alternate line for every game and leave nothing in the band.
+        candidates = self._bettable(predictions)
+        filtered = self._filter_best_per_event(candidates)
         filtered = [p for p in filtered if p.confidence >= self.min_confidence]
 
         if len(filtered) < num_legs:
@@ -207,6 +224,103 @@ class ParlayOptimizer:
 
         return selected
 
+    # Parlay legs are drawn from this probability band.
+    #
+    # Without it, `_filter_best_per_event` hands back whatever market has the
+    # highest confidence, which is always an extreme alternate line — "Over
+    # 0.5 Goals" at 94%. A four-leg ticket of -1900 shots pays 1.26 and is
+    # not a bet anyone wants. These are the odds people actually parlay.
+    LEG_MIN_PROB = 0.35
+    LEG_MAX_PROB = 0.80
+
+    @staticmethod
+    def _discount_odds(decimal_odds: float, factor: float) -> float:
+        """Scale the *profit* on a price, keeping it a valid decimal price.
+
+        Multiplying decimal odds directly is wrong: decimal odds are
+        1 + profit, so scaling the whole thing can drop below 1.0, which says
+        a winning bet returns less than the stake. A teaser of short legs did
+        exactly that and produced combined odds of 0.18.
+        """
+        if decimal_odds <= 1.0:
+            return 1.01
+        return round(1.0 + (decimal_odds - 1.0) * factor, 3)
+
+    def _bettable(self, picks: list[Prediction]) -> list[Prediction]:
+        """Keep only legs in the band people actually parlay."""
+        banded = [
+            p for p in picks
+            if self.LEG_MIN_PROB <= p.probability <= self.LEG_MAX_PROB
+        ]
+        # If the band is empty, fall back rather than returning nothing.
+        return banded or picks
+
+    def _drop_contradictions(
+        self, legs: list[Prediction]
+    ) -> list[Prediction]:
+        """Remove legs that cannot both win.
+
+        Picking the best leg per bet type can pair up markets that flatly
+        conflict — "Over 2.5" from the totals market alongside "Under 3.5"
+        from the alternates, or "BTTS No" with a 2-1 correct score. A ticket
+        containing both is dead on submission.
+
+        Legs are considered in confidence order, and any later leg that
+        contradicts one already kept is dropped.
+        """
+        kept: list[Prediction] = []
+        for leg in sorted(legs, key=lambda p: p.confidence, reverse=True):
+            if not any(self._conflicts(leg, other) for other in kept):
+                kept.append(leg)
+        return kept
+
+    def _conflicts(self, a: Prediction, b: Prediction) -> bool:
+        """True when two legs on the same game cannot both win."""
+        if a.event.id != b.event.id:
+            return False
+
+        def is_over(p: Prediction) -> Optional[bool]:
+            text = p.pick.lower()
+            if "over" in text:
+                return True
+            if "under" in text:
+                return False
+            return None
+
+        TOTAL_TYPES = {
+            BetType.OVER_UNDER, BetType.ALTERNATE_TOTAL, BetType.TEAM_TOTAL,
+        }
+        # Totals on the same side of the same subject: an Over at a higher
+        # line cannot coexist with an Under at a lower one.
+        if a.bet_type in TOTAL_TYPES and b.bet_type in TOTAL_TYPES:
+            if a.team_name == b.team_name:
+                a_over, b_over = is_over(a), is_over(b)
+                if (
+                    a_over is not None and b_over is not None
+                    and a_over != b_over
+                    and a.line is not None and b.line is not None
+                ):
+                    over_line = a.line if a_over else b.line
+                    under_line = b.line if a_over else a.line
+                    if over_line >= under_line:
+                        return True
+
+        # Two different named winners of the same game.
+        RESULT_TYPES = {
+            BetType.MONEYLINE, BetType.THREE_WAY, BetType.GAME_RESULT_90,
+        }
+        if a.bet_type in RESULT_TYPES and b.bet_type in RESULT_TYPES:
+            if a.pick != b.pick:
+                return True
+
+        # BTTS cannot be both yes and no; nor can it sit against a clean sheet.
+        if a.bet_type == BetType.BOTH_TEAMS_SCORE and b.bet_type == BetType.CLEAN_SHEET:
+            return "yes" in a.pick.lower()
+        if b.bet_type == BetType.BOTH_TEAMS_SCORE and a.bet_type == BetType.CLEAN_SHEET:
+            return "yes" in b.pick.lower()
+
+        return False
+
     def _create_parlay(self, legs: list[Prediction]) -> ParlayPrediction:
         """Create a ParlayPrediction from selected legs."""
         if not legs:
@@ -315,14 +429,31 @@ class ParlayOptimizer:
             if bt not in by_type:
                 by_type[bt] = p
 
-        legs = list(by_type.values())[:num_legs]
+        legs = self._drop_contradictions(list(by_type.values()))[:num_legs]
 
         if len(legs) < 2:
             return ParlayPrediction(legs=legs, reasoning="Need at least 2 different bet types for SGP.", parlay_type="sgp")
 
         parlay = self._create_parlay(legs)
-        # SGP odds are typically correlated — reduce combined odds by ~15%
-        parlay.combined_odds = round(parlay.combined_odds * 0.85, 2)
+
+        # Same-game legs are not independent, and the old code only adjusted
+        # the payout for that — it cut the odds 15% while still multiplying
+        # the leg probabilities as though the legs were unrelated. That
+        # understates the true chance of the ticket landing (legs like "home
+        # win" and "home -1.5" move together), so the stake advice built on it
+        # was wrong in both directions at once.
+        #
+        # Correlated legs are handled by shrinking the product toward the
+        # weakest leg: independence is the floor, and a perfectly correlated
+        # ticket can be no more likely than its least likely leg.
+        independent = parlay.combined_confidence / 100
+        weakest = min(leg.probability for leg in legs)
+        correlation = 0.35  # same game, mixed market types
+        adjusted = independent + correlation * (weakest - independent)
+        parlay.combined_confidence = round(100 * adjusted, 2)
+
+        # Books price that correlation into the payout as well.
+        parlay.combined_odds = self._discount_odds(parlay.combined_odds, 0.85)
         parlay.parlay_type = "sgp"
 
         match_label = f"{legs[0].event.home_team.name} vs {legs[0].event.away_team.name}" if legs else "Unknown"
@@ -359,7 +490,7 @@ class ParlayOptimizer:
         Round Robin: Select N picks, generate all C(N, combo_size) parlays.
         Hard Rock Bet style — multiple parlay combos from your selections.
         """
-        filtered = self._filter_best_per_event(predictions)
+        filtered = self._filter_best_per_event(self._bettable(predictions))
         filtered = [p for p in filtered if p.confidence >= self.min_confidence]
         filtered.sort(key=lambda p: p.confidence, reverse=True)
 
@@ -369,12 +500,26 @@ class ParlayOptimizer:
 
         combos = list(itertools.combinations(picks, combo_size))
         parlays = []
+        # A round robin is every one of these tickets bet together, so the
+        # stake advice has to be split across them. Sizing each ticket as if
+        # it were the only bet on the slip — the old behaviour — multiplied
+        # the real outlay by the number of combinations.
+        per_ticket_divisor = max(1, len(combos))
         for combo in combos:
             parlay = self._create_parlay(list(combo))
             parlay.parlay_type = "round_robin"
-            parlay.reasoning = f"🔄 ROUND ROBIN ({combo_size} of {len(picks)})\n" + parlay.reasoning
             advice = self.calculate_bankroll_advice(parlay)
-            parlay.recommended_stake = advice.recommended_stake
+            parlay.recommended_stake = round(
+                advice.recommended_stake / per_ticket_divisor, 2
+            )
+            parlay.reasoning = (
+                f"🔄 ROUND ROBIN ({combo_size} of {len(picks)}) — "
+                f"{len(combos)} tickets on this slip; stake shown is per "
+                f"ticket, so the total outlay is "
+                f"{len(combos)} × ${parlay.recommended_stake:.2f} = "
+                f"${parlay.recommended_stake * len(combos):.2f}.\n"
+                + parlay.reasoning
+            )
             parlays.append(parlay)
 
         parlays.sort(key=lambda p: p.combined_confidence, reverse=True)
@@ -395,10 +540,35 @@ class ParlayOptimizer:
         """
         TEASER_TYPES = {BetType.SPREAD, BetType.OVER_UNDER, BetType.ALTERNATE_SPREAD, BetType.ALTERNATE_TOTAL}
 
-        teaser_preds = [p for p in predictions if p.bet_type in TEASER_TYPES and p.line is not None]
+        # Teasers only exist in the high-scoring, point-based sports. Buying
+        # "6 points" onto a soccer or hockey goal line means moving it by six
+        # goals, which is not a bet any book offers — and the old code applied
+        # it to every sport, producing 97%-confidence tickets off goal lines.
+        TEASER_SPORTS = {Sport.AMERICAN_FOOTBALL, Sport.BASKETBALL}
+
+        teaser_preds = [
+            p for p in predictions
+            if p.bet_type in TEASER_TYPES
+            and p.line is not None
+            and p.event.tournament.sport in TEASER_SPORTS
+        ]
+        if not teaser_preds:
+            return ParlayPrediction(
+                legs=[],
+                reasoning=(
+                    "Teasers apply to American football and basketball only — "
+                    "no qualifying spread or total legs on the board."
+                ),
+                parlay_type="teaser",
+            )
+
+        # Teasing is only worth anything near a coin-flip line — buying six
+        # points onto a market already at 94% adds nothing and costs payout.
+        # Sorting by confidence picked exactly those useless legs, so take the
+        # lines closest to even money instead.
+        teaser_preds = [p for p in teaser_preds if 0.40 <= p.probability <= 0.70]
         filtered = self._filter_best_per_event(teaser_preds)
-        filtered = [p for p in filtered if p.confidence >= 50]
-        filtered.sort(key=lambda p: p.confidence, reverse=True)
+        filtered.sort(key=lambda p: abs(p.probability - 0.5))
 
         legs = filtered[:num_legs]
         if len(legs) < 2:
@@ -406,29 +576,83 @@ class ParlayOptimizer:
                 legs=[], reasoning="Need at least 2 spread/total legs for a teaser.", parlay_type="teaser"
             )
 
-        # Adjust each leg's line by teaser_points in bettor's favor
+        # Move each leg's line by teaser_points in the bettor's favour, and
+        # re-price it off the game model at the new line.
+        #
+        # The old version left `line` and `pick` untouched and simply added
+        # `teaser_points * 2.5` percentage points to the confidence. So a
+        # displayed teaser leg still showed the untweaked number, the gain was
+        # the same 15 points whether the sport was the NFL or the NHL, and no
+        # actual line was ever bought. Here the line really moves and the
+        # probability comes from the model at that line.
+        analyzer = StatisticalAnalyzer()
         adjusted_legs = []
         for leg in legs:
-            adj = Prediction(
+            model = analyzer.build_model(leg.event)
+            old_line = leg.line if leg.line is not None else 0.0
+            is_total = leg.bet_type in (
+                BetType.OVER_UNDER, BetType.ALTERNATE_TOTAL
+            )
+            wants_over = "over" in leg.pick.lower()
+
+            if is_total:
+                # Teasing a total moves the line away from the side you took.
+                new_line = (
+                    old_line - teaser_points if wants_over
+                    else old_line + teaser_points
+                )
+                if model is not None:
+                    ou = model.over_under(new_line)
+                    new_prob = ou["over"] if wants_over else ou["under"]
+                else:
+                    new_prob = leg.probability
+            else:
+                # Teasing a handicap adds points to the side you took.
+                new_line = old_line + teaser_points
+                if model is not None:
+                    is_home = leg.team_name == leg.event.home_team.name
+                    hc = model.handicap(new_line if is_home else -new_line)
+                    new_prob = hc["home"] if is_home else hc["away"]
+                else:
+                    new_prob = leg.probability
+
+            new_prob = min(0.99, max(0.01, new_prob))
+            new_pick = re.sub(
+                r"[+-]?\d+(?:\.\d+)?",
+                f"{new_line:+g}" if not is_total else f"{new_line:g}",
+                leg.pick,
+                count=1,
+            )
+
+            adjusted_legs.append(Prediction(
                 event=leg.event,
                 bet_type=leg.bet_type,
-                pick=leg.pick,
-                confidence=min(99, leg.confidence + teaser_points * 2.5),  # Buying points increases confidence
-                probability=min(0.99, leg.probability + teaser_points * 0.025),
-                odds=leg.odds * 0.65,  # Teaser reduces payout significantly
-                value_rating=leg.value_rating,
-                reasoning=leg.reasoning,
+                pick=f"{new_pick} (teased {teaser_points:+g})",
+                confidence=round(new_prob * 100, 1),
+                probability=new_prob,
+                odds=self._discount_odds(leg.odds, 0.65),
+                value_rating=0.0,      # Re-priced by us, so no claimed edge
+                reasoning=(
+                    f"Teased {teaser_points:+g} from {old_line:g} to "
+                    f"{new_line:g}; re-priced from the game model at the new "
+                    f"line.\n{leg.reasoning}"
+                ),
                 factors=leg.factors,
-                line=leg.line,
-                american_odds=leg.american_odds,
-                market_display=f"TEASER {teaser_points:+.0f}pts — {leg.market_display}",
+                line=new_line,
+                american_odds=decimal_to_american(
+                    self._discount_odds(leg.odds, 0.65)
+                ),
+                market_display=(
+                    f"TEASER {teaser_points:+g}pts — {leg.market_display}"
+                ),
                 team_name=leg.team_name,
                 push_note=leg.push_note,
-            )
-            adjusted_legs.append(adj)
+                price_source="model",
+            ))
 
         parlay = self._create_parlay(adjusted_legs)
-        parlay.combined_odds = round(parlay.combined_odds * 0.55, 2)  # Teasers pay much less
+        # Discount the profit, not the whole price — see _discount_odds.
+        parlay.combined_odds = self._discount_odds(parlay.combined_odds, 0.55)
         parlay.parlay_type = "teaser"
         parlay.teaser_points = teaser_points
         parlay.reasoning = f"🎲 TEASER (+{teaser_points:.0f} points) — Lines adjusted in your favor\n" + parlay.reasoning
@@ -449,7 +673,7 @@ class ParlayOptimizer:
         Flex Parlay: Parlay that still pays if you miss some legs.
         Hard Rock Bet style — lose 1+ legs and still get a reduced payout.
         """
-        filtered = self._filter_best_per_event(predictions)
+        filtered = self._filter_best_per_event(self._bettable(predictions))
         filtered = [p for p in filtered if p.confidence >= self.min_confidence]
         filtered.sort(key=lambda p: p.confidence, reverse=True)
 
@@ -465,17 +689,29 @@ class ParlayOptimizer:
 
         # Flex parlay reduces odds based on insurance level
         insurance_factor = 0.5 ** miss_allowed  # Each miss halves the payout
-        parlay.combined_odds = round(max(1.1, parlay.combined_odds * insurance_factor), 2)
+        parlay.combined_odds = self._discount_odds(
+            parlay.combined_odds, insurance_factor
+        )
 
-        # Increase effective confidence since we can miss legs
-        flex_conf = 0
-        n = len(legs)
-        probs = [l.probability for l in legs]
-        # P(at most miss_allowed misses) = sum of P(exactly k misses) for k=0..miss_allowed
-        # Simplified: boost confidence proportionally
-        base_prob = parlay.combined_confidence / 100
-        boost = 1 + miss_allowed * 0.3  # ~30% boost per miss allowed
-        parlay.combined_confidence = round(min(95, base_prob * boost * 100), 2)
+        # P(at most `miss_allowed` legs lose), computed exactly.
+        #
+        # The old code described this calculation in a comment and then did
+        # not do it — it multiplied the all-legs-win probability by
+        # (1 + 0.3 * misses), an arbitrary factor, and left the leg
+        # probabilities it had gathered unused. Legs have different
+        # probabilities, so this is a Poisson-binomial: walk the legs and keep
+        # a running distribution over how many have lost so far.
+        probs = [min(0.999, max(0.001, leg.probability)) for leg in legs]
+        dist = [1.0]  # dist[k] = P(exactly k misses so far)
+        for p in probs:
+            nxt = [0.0] * (len(dist) + 1)
+            for k, acc in enumerate(dist):
+                nxt[k] += acc * p              # this leg wins
+                nxt[k + 1] += acc * (1.0 - p)  # this leg misses
+            dist = nxt
+        parlay.combined_confidence = round(
+            100 * sum(dist[: miss_allowed + 1]), 2
+        )
 
         parlay.parlay_type = "flex"
         parlay.flex_miss_allowed = miss_allowed
