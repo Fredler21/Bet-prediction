@@ -183,6 +183,32 @@ class ScoringInputs:
     notes: list[str] = field(default_factory=list)
 
 
+# How many games of league-average prior a team's own rate is blended with.
+#
+# Two games is not evidence that a defence is elite, but the raw ratio treats
+# it as such: a side that has conceded 0 in two matches came out with a
+# defensive strength at the clamp floor, and the model then had Juventus at
+# 0.79 goals against AC Milan's 1.85 while the market had Juventus as the
+# favourite. Shrinking toward the league average fixes that, and fades out on
+# its own as real games accumulate.
+PRIOR_GAMES = 6.0
+
+
+def shrink(rate: float, games: int, baseline: float) -> float:
+    """Blend a team's own scoring rate with the league average.
+
+    With `games` observations the team's rate gets weight games/(games+k) and
+    the league average gets the rest. At 2 games the estimate barely moves off
+    the baseline; by 20 it is mostly the team's own record.
+    """
+    if baseline <= 0:
+        return rate
+    if games <= 0:
+        return baseline
+    weight = games / (games + PRIOR_GAMES)
+    return weight * rate + (1.0 - weight) * baseline
+
+
 def expected_scoring(
     sport: Sport,
     home_scored: float,
@@ -192,6 +218,8 @@ def expected_scoring(
     league_baseline: float,
     home_adj: float = 1.0,
     away_adj: float = 1.0,
+    home_games: int = 0,
+    away_games: int = 0,
 ) -> ScoringInputs:
     """Project each side's scoring with the attack/defence strength method.
 
@@ -201,6 +229,10 @@ def expected_scoring(
     1.4 * 1.43 * 1.25. This is the standard construction, and it is what the
     old `avg_conceded / avg_conceded` ratio was failing to be — that version
     could multiply a total by 15x when one side had a tight defence.
+
+    Rates are shrunk toward the league average according to how many games
+    they rest on, so an early-season sample cannot masquerade as a strong
+    signal. Pass `home_games` / `away_games` to enable it.
 
     `home_adj` / `away_adj` are bounded multipliers from the form, injury and
     momentum factors.
@@ -221,6 +253,20 @@ def expected_scoring(
         notes.append("scoring history missing for at least one side")
         half = prof.fallback_total / 2.0
         return ScoringInputs(half, half, False, notes)
+
+    if home_games or away_games:
+        thin = min(
+            home_games or PRIOR_GAMES * 10, away_games or PRIOR_GAMES * 10
+        )
+        if thin < PRIOR_GAMES:
+            notes.append(
+                f"Only {int(thin)} game(s) of scoring data — the projection is "
+                "pulled toward the league average."
+            )
+        home_scored = shrink(home_scored, home_games, baseline)
+        home_conceded = shrink(home_conceded, home_games, baseline)
+        away_scored = shrink(away_scored, away_games, baseline)
+        away_conceded = shrink(away_conceded, away_games, baseline)
 
     if prof.uses_grid:
         # Low-scoring sports: ratio strengths, the standard Poisson form.

@@ -69,6 +69,11 @@ An eight-factor analysis (form, home advantage, H2H, table position, scoring,
 injuries, consistency, momentum) applies a **bounded ±15% adjustment** to each
 side's projected scoring. It is not normalised into a probability directly.
 
+Rates are **shrunk toward the league average** by sample size — a team's own
+record gets weight `n / (n + 6)`. Early in a season the projection sits near
+the league average and says so on the match; by mid-season it is almost
+entirely the team's own record.
+
 Sanity checks against known long-run rates:
 
 | Check | Model | Reality |
@@ -188,8 +193,11 @@ statistical model alone — the model is the product; the LLM is commentary.
 
 ## Known limitations
 
-- **Early season is weak.** Three games of data is three games of data. The
-  model leans on last season's numbers, and says so on the match.
+- **Early season is thin.** Scoring rates are shrunk toward the league average
+  in proportion to how many games they rest on, so two clean sheets cannot
+  pass for an elite defence, and the match carries a note saying so. It is
+  still two games of information — the shrinkage keeps the model honest about
+  that rather than making it clairvoyant.
 - **Player markets are team-level.** Lines come from the team's projected
   scoring and a positional share. Real names and positions, but there is no
   per-player feed, so no per-player edge is claimed.

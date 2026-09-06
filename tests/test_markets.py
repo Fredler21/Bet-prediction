@@ -176,6 +176,51 @@ def test_missing_scoring_data_is_reported_not_invented():
     assert scoring.notes
 
 
+def test_thin_samples_are_shrunk_toward_the_league_average():
+    """Two games is not evidence that a defence is elite.
+
+    A side that had conceded 0 in two matches took the defensive-strength
+    clamp floor, which put Juventus at 0.79 goals against AC Milan's 1.85
+    while the market had Juventus favourite. With shrinkage the projection
+    sits near the league average until real games accumulate.
+    """
+    thin = expected_scoring(
+        Sport.SOCCER, 1.5, 0.0, 2.0, 0.5, 1.44, home_games=2, away_games=2
+    )
+    model = GameModel(Sport.SOCCER, thin)
+    probs = model.result_probabilities()
+
+    # Both sides land within touching distance of a league-average match.
+    assert 1.0 < thin.home_lambda < 2.0
+    assert 0.8 < thin.away_lambda < 2.0
+    # The home side is not turned into a heavy underdog by two clean sheets.
+    assert probs["home"] > probs["away"]
+    assert any("game(s) of scoring data" in n for n in thin.notes)
+
+
+def test_shrinkage_fades_as_games_accumulate():
+    """A full season's record should be trusted almost as-is."""
+    args = (Sport.SOCCER, 2.1, 0.9, 1.3, 1.7, 1.45)
+    early = expected_scoring(*args, home_games=2, away_games=2)
+    late = expected_scoring(*args, home_games=38, away_games=38)
+    raw = expected_scoring(*args)
+
+    # Late-season is close to the unshrunk estimate; early season is not.
+    assert abs(late.home_lambda - raw.home_lambda) < 0.25
+    assert abs(early.home_lambda - raw.home_lambda) > abs(
+        late.home_lambda - raw.home_lambda
+    )
+
+
+def test_shrinkage_is_opt_in():
+    """Callers that pass no game counts get the unshrunk estimate."""
+    a = expected_scoring(Sport.SOCCER, 2.0, 1.0, 1.2, 1.6, 1.45)
+    b = expected_scoring(
+        Sport.SOCCER, 2.0, 1.0, 1.2, 1.6, 1.45, home_games=0, away_games=0
+    )
+    assert a.home_lambda == b.home_lambda
+
+
 # ── Score grid coherence ─────────────────────────────────────────────────────
 
 

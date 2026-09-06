@@ -145,6 +145,8 @@ class StatisticalAnalyzer:
             home_scored, home_conceded,
             away_scored, away_conceded,
             baseline, home_adj, away_adj,
+            home_games=home.games_played,
+            away_games=away.games_played,
         )
         model = GameModel(sport, scoring)
         model.factors = factors  # type: ignore[attr-defined]
@@ -301,6 +303,11 @@ class StatisticalAnalyzer:
         )
         if not model.complete:
             basis += " Limited data — treat with caution."
+        # Carry the model's own caveats (thin samples, missing baseline) onto
+        # the match so they reach the page rather than staying in the engine.
+        for note in model.scoring.notes:
+            if note not in event.data_notes:
+                event.data_notes.append(note)
 
         def add(p: Optional[Prediction]) -> None:
             if p is not None:
